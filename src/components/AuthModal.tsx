@@ -836,26 +836,6 @@ export const AuthModal: React.FC = () => {
                               </span>
                             </div>
                           </div>
-
-                          {/* Clearly visible Edit Profile button */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditName(user.name || '');
-                              setEditEmail(user.email || '');
-                              setEditGender(user.gender || 'Male');
-                              setVerifiedPhone(user.phone || '');
-                              setShowPhoneOtpBox(false);
-                              setPhoneOtpStep('input');
-                              setProfileErrors({});
-                              setProfileSuccessMsg(null);
-                              setIsProfileEditing(true);
-                            }}
-                            className="w-full py-3 bg-white text-black hover:bg-[#F6F1E9] font-mono font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all hover:scale-[1.01] active:scale-95"
-                          >
-                            <Edit3 size={14} />
-                            <span>Edit Profile</span>
-                          </button>
                         </div>
                       ) : (
                         /* ========================================================================= */
