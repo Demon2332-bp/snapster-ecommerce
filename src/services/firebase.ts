@@ -250,17 +250,23 @@ export async function fetchUserProfileService(uid: string): Promise<AuthUser | n
 }
 
 export async function updateUserProfileService(uid: string, updates: Partial<AuthUser>): Promise<void> {
+  const path = `users/${uid}`;
   try {
     await updateDoc(doc(db, 'users', uid), {
       ...updates,
       updatedAt: new Date().toISOString(),
     });
   } catch (e) {
-    // If doc does not exist, set it
-    await setDoc(doc(db, 'users', uid), {
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    // If doc does not exist, set it with merge: true
+    try {
+      await setDoc(doc(db, 'users', uid), {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch (setErr) {
+      handleFirestoreError(setErr, OperationType.WRITE, path);
+      throw setErr;
+    }
   }
 }
 

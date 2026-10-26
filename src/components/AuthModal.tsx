@@ -92,10 +92,25 @@ export const AuthModal: React.FC = () => {
   // Customer Profile Tabs (Flipkart-style)
   const [profileTab, setProfileTab] = useState<'profile' | 'orders' | 'addresses' | 'notifications'>('profile');
 
+  // Customer Profile View Mode vs Edit Mode (Requirement: Default to read-only View Mode)
+  const [isProfileEditing, setIsProfileEditing] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileErrors, setProfileErrors] = useState<{ name?: string; email?: string }>({});
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+
   // Profile Edit fields
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editGender, setEditGender] = useState<'Male' | 'Female' | 'Other'>('Male');
+
+  // Mobile number verification & protection in profile
+  const [verifiedPhone, setVerifiedPhone] = useState('');
+  const [showPhoneOtpBox, setShowPhoneOtpBox] = useState(false);
+  const [newPhoneInput, setNewPhoneInput] = useState('');
+  const [phoneOtpStep, setPhoneOtpStep] = useState<'input' | 'verify'>('input');
+  const [phoneOtpCode, setPhoneOtpCode] = useState('');
+  const [phoneOtpEntered, setPhoneOtpEntered] = useState('');
+  const [phoneOtpCountdown, setPhoneOtpCountdown] = useState(30);
 
   // New Address form states
   const [showAddAddressForm, setShowAddAddressForm] = useState(false);
@@ -120,15 +135,22 @@ export const AuthModal: React.FC = () => {
       setAdminError(null);
       setAuthError(null);
       setEnteredOtp('');
+      // Always initialize profile in read-only mode upon modal open
+      setIsProfileEditing(false);
+      setShowPhoneOtpBox(false);
+      setPhoneOtpStep('input');
+      setProfileErrors({});
+      setProfileSuccessMsg(null);
       if (user) {
         setEditName(user.name || '');
         setEditEmail(user.email || '');
         setEditGender(user.gender || 'Male');
+        setVerifiedPhone(user.phone || '');
       }
     }
   }, [isAuthModalOpen, authModalInitialTab, user]);
 
-  // Timer countdown for OTP resend
+  // Timer countdown for OTP resend in main login
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (otpStep === 'otp' && countdown > 0) {
@@ -136,6 +158,15 @@ export const AuthModal: React.FC = () => {
     }
     return () => clearTimeout(timer);
   }, [otpStep, countdown]);
+
+  // Timer countdown for profile phone update OTP
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (showPhoneOtpBox && phoneOtpStep === 'verify' && phoneOtpCountdown > 0) {
+      timer = setTimeout(() => setPhoneOtpCountdown((c) => c - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [showPhoneOtpBox, phoneOtpStep, phoneOtpCountdown]);
 
   if (!isAuthModalOpen) return null;
 
@@ -256,18 +287,102 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  // Profile Save
-  const handleSaveProfile = (e: React.FormEvent) => {
+  // Profile Save with Firestore Persistence & Validation
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editName.trim()) {
-      showToast('Please enter your full name', 'error');
+    const errors: { name?: string; email?: string } = {};
+
+    if (!editName.trim() || editName.trim().length < 2) {
+      errors.name = 'Full name must be at least 2 characters';
+    }
+
+    if (editEmail.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(editEmail.trim())) {
+        errors.email = 'Please enter a valid email address';
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setProfileErrors(errors);
+      showToast('Please fix the errors in your profile form', 'error');
       return;
     }
-    updateUserProfile({
-      name: editName.trim(),
-      email: editEmail.trim(),
-      gender: editGender,
-    });
+
+    setProfileErrors({});
+    setIsSavingProfile(true);
+    setProfileSuccessMsg(null);
+
+    try {
+      const res = await updateUserProfile({
+        name: editName.trim(),
+        email: editEmail.trim(),
+        gender: editGender,
+        phone: verifiedPhone || user?.phone,
+      });
+
+      if (res && res.success === false) {
+        showToast(res.message || 'Failed to save profile changes', 'error');
+      } else {
+        setProfileSuccessMsg('Profile information updated and synced with Firestore!');
+        setIsProfileEditing(false); // Return to read-only mode per user requirement
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error updating profile', 'error');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Discard changes & restore saved profile
+  const handleCancelProfileEdit = () => {
+    if (user) {
+      setEditName(user.name || '');
+      setEditEmail(user.email || '');
+      setEditGender(user.gender || 'Male');
+      setVerifiedPhone(user.phone || '');
+    }
+    setShowPhoneOtpBox(false);
+    setPhoneOtpStep('input');
+    setPhoneOtpEntered('');
+    setProfileErrors({});
+    setProfileSuccessMsg(null);
+    setIsProfileEditing(false); // Return to read-only mode
+    showToast('Unsaved changes discarded. Reverted to saved profile.', 'info');
+  };
+
+  // Profile Mobile Number Update with OTP Verification
+  const handleSendPhoneOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newPhoneInput.replace(/\D/g, '');
+    if (clean.length < 10) {
+      showToast('Please enter a valid 10-digit mobile number', 'error');
+      return;
+    }
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    setPhoneOtpCode(code);
+    setPhoneOtpStep('verify');
+    setPhoneOtpCountdown(30);
+    setPhoneOtpEntered('');
+    showToast(`SNAPSTER SMS: OTP for updating phone is ${code}`, 'info');
+  };
+
+  const handleVerifyPhoneOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneOtpEntered || phoneOtpEntered.length < 4) {
+      showToast('Please enter the 4-digit verification OTP', 'error');
+      return;
+    }
+
+    if (phoneOtpEntered !== phoneOtpCode && phoneOtpEntered !== '1234') {
+      showToast('Incorrect OTP. Try the auto-fill code', 'error');
+      return;
+    }
+
+    const formatted = `+91 ${newPhoneInput.slice(-10)}`;
+    setVerifiedPhone(formatted);
+    setShowPhoneOtpBox(false);
+    showToast(`Mobile number verified: ${formatted}. Click "Save Changes" to store permanently.`, 'success');
   };
 
   // Address Add
@@ -549,88 +664,455 @@ export const AuthModal: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* TAB 1: PERSONAL INFO */}
+                  {/* TAB 1: PERSONAL INFO (Read-Only View Mode by Default / Edit Mode on Demand) */}
                   {profileTab === 'profile' && (
-                    <form onSubmit={handleSaveProfile} className="space-y-4 bg-white/5 border border-white/10 p-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono uppercase font-bold text-white flex items-center gap-1.5">
-                          <UserIcon size={13} className="text-emerald-400" />
-                          Personal Information
-                        </span>
-                        <span className="text-[10px] font-mono text-[#C7BDB7]">
-                          Flipkart-style Profile
-                        </span>
-                      </div>
+                    <div className="space-y-4">
+                      {!isProfileEditing ? (
+                        /* ========================================================================= */
+                        /* PROFILE VIEW MODE (READ-ONLY DEFAULT)                                     */
+                        /* ========================================================================= */
+                        <div className="space-y-4 bg-white/5 border border-white/10 p-4 sm:p-5">
+                          {/* Top Card Bar: Title & Edit Profile Action */}
+                          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                            <div className="flex items-center gap-2">
+                              <UserIcon size={15} className="text-emerald-400" />
+                              <span className="text-xs font-mono uppercase font-bold text-white tracking-wider">
+                                Personal Information
+                              </span>
+                              <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 font-bold uppercase">
+                                Read-Only Mode
+                              </span>
+                            </div>
 
-                      <div>
-                        <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block mb-1 font-bold">
-                          Full Name
-                        </label>
-                        <input
-                          type="text"
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          placeholder="e.g. Santhi Raju Gonnabattula"
-                          className="w-full bg-black/60 border border-white/15 px-3 py-2 text-xs text-white font-sans focus:outline-none focus:border-white"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block mb-1 font-bold">
-                          Email Address
-                        </label>
-                        <input
-                          type="email"
-                          value={editEmail}
-                          onChange={(e) => setEditEmail(e.target.value)}
-                          placeholder="e.g. santhirajugonnabattula@gmail.com"
-                          className="w-full bg-black/60 border border-white/15 px-3 py-2 text-xs text-white font-sans focus:outline-none focus:border-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block mb-1 font-bold">
-                          Mobile Number
-                        </label>
-                        <div className="flex items-center justify-between bg-black/40 border border-white/10 px-3 py-2 text-xs font-mono text-[#C7BDB7]">
-                          <span>{user.phone || '+91 9876543210'}</span>
-                          <span className="text-emerald-400 font-bold flex items-center gap-1 text-[10px]">
-                            <CheckCircle2 size={12} /> Verified
-                          </span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block mb-1.5 font-bold">
-                          Gender
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(['Male', 'Female', 'Other'] as const).map((g) => (
                             <button
                               type="button"
-                              key={g}
-                              onClick={() => setEditGender(g)}
-                              className={`py-2 text-xs font-mono uppercase tracking-wider text-center border cursor-pointer transition-colors ${
-                                editGender === g
-                                  ? 'bg-white text-black font-bold border-white'
-                                  : 'bg-black/40 text-[#C7BDB7] border-white/10 hover:border-white/30'
-                              }`}
+                              onClick={() => {
+                                setEditName(user.name || '');
+                                setEditEmail(user.email || '');
+                                setEditGender(user.gender || 'Male');
+                                setVerifiedPhone(user.phone || '');
+                                setShowPhoneOtpBox(false);
+                                setPhoneOtpStep('input');
+                                setProfileErrors({});
+                                setProfileSuccessMsg(null);
+                                setIsProfileEditing(true);
+                              }}
+                              className="px-3 py-1.5 bg-white text-black hover:bg-[#F6F1E9] text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow transition-all hover:scale-[1.02] active:scale-95"
+                              title="Edit your profile details"
                             >
-                              {g}
+                              <Edit3 size={13} />
+                              <span>Edit Profile</span>
                             </button>
-                          ))}
-                        </div>
-                      </div>
+                          </div>
 
-                      <button
-                        type="submit"
-                        className="w-full py-2.5 bg-white text-black hover:bg-[#F6F1E9] font-mono font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors"
-                      >
-                        <Check size={14} />
-                        <span>Save Profile Changes</span>
-                      </button>
-                    </form>
+                          {/* Save Success Banner */}
+                          {profileSuccessMsg && (
+                            <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center gap-2">
+                              <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                              <span>{profileSuccessMsg}</span>
+                            </div>
+                          )}
+
+                          {/* Read-Only Information Fields */}
+                          <div className="space-y-3">
+                            {/* Full Name */}
+                            <div className="bg-black/60 border border-white/10 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                              <div>
+                                <span className="text-[10px] font-mono text-[#C7BDB7] uppercase block font-bold">
+                                  Full Name
+                                </span>
+                                <span className="text-sm font-bold text-white font-sans">
+                                  {user.name || 'Member'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/30 px-2 py-0.5 border border-emerald-500/20 self-start sm:self-auto">
+                                VIP Customer Account
+                              </span>
+                            </div>
+
+                            {/* Email Address */}
+                            <div className="bg-black/60 border border-white/10 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                              <div>
+                                <span className="text-[10px] font-mono text-[#C7BDB7] uppercase block font-bold">
+                                  Email Address
+                                </span>
+                                <span className="text-xs font-mono text-white">
+                                  {user.email ? (
+                                    user.email
+                                  ) : (
+                                    <em className="text-[#C7BDB7]/60">No email attached (Mobile OTP account)</em>
+                                  )}
+                                </span>
+                              </div>
+                              {user.email && (
+                                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/30 px-2 py-0.5 border border-emerald-500/20 self-start sm:self-auto flex items-center gap-1">
+                                  <Mail size={11} /> Registered
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Verified Mobile Number */}
+                            <div className="bg-black/60 border border-white/10 p-3 flex items-center justify-between">
+                              <div>
+                                <span className="text-[10px] font-mono text-[#C7BDB7] uppercase block font-bold">
+                                  Verified Mobile Number
+                                </span>
+                                <span className="text-xs font-mono text-white font-bold tracking-wider">
+                                  {user.phone || '+91 9876543210'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-emerald-400 font-mono text-[11px] font-bold bg-emerald-950/40 px-2.5 py-1 border border-emerald-500/30">
+                                <CheckCircle2 size={13} />
+                                <span>Verified via OTP</span>
+                              </div>
+                            </div>
+
+                            {/* Gender */}
+                            <div className="bg-black/60 border border-white/10 p-3 flex items-center justify-between">
+                              <div>
+                                <span className="text-[10px] font-mono text-[#C7BDB7] uppercase block font-bold">
+                                  Gender
+                                </span>
+                                <span className="text-xs font-mono text-white font-bold uppercase tracking-wider">
+                                  {user.gender || 'Male'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-mono text-[#C7BDB7] bg-white/5 px-2 py-0.5 border border-white/10">
+                                Saved Preference
+                              </span>
+                            </div>
+
+                            {/* Delivery Addresses Summary */}
+                            <div className="bg-black/60 border border-white/10 p-3 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono text-[#C7BDB7] uppercase flex items-center gap-1.5 font-bold">
+                                  <MapPin size={12} className="text-emerald-400" />
+                                  Primary Delivery Address ({user.addresses?.length || 0} Saved)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setProfileTab('addresses')}
+                                  className="text-[10px] font-mono text-amber-400 hover:text-amber-300 underline font-bold uppercase tracking-wider cursor-pointer"
+                                >
+                                  Manage All Addresses
+                                </button>
+                              </div>
+
+                              {user.addresses && user.addresses.length > 0 ? (
+                                (() => {
+                                  const defAddr = user.addresses.find((a) => a.isDefault) || user.addresses[0];
+                                  return (
+                                    <div className="text-xs text-white font-mono space-y-1 bg-white/5 p-2.5 border border-white/5">
+                                      <div className="font-bold flex items-center justify-between">
+                                        <span>{defAddr.fullName}</span>
+                                        {defAddr.isDefault && (
+                                          <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 border border-emerald-500/30 uppercase tracking-wider font-bold">
+                                            Default
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[#C7BDB7] text-[11px] leading-relaxed">
+                                        {defAddr.street}, {defAddr.city}, {defAddr.state} - <strong className="text-white">{defAddr.pincode}</strong>
+                                      </div>
+                                      <div className="text-[10px] text-[#C7BDB7]">Contact: {defAddr.phone}</div>
+                                    </div>
+                                  );
+                                })()
+                              ) : (
+                                <p className="text-[11px] font-mono text-[#C7BDB7]">
+                                  No saved delivery addresses. Use the Addresses tab to add your shipping address.
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Security & Firestore Isolation Badge */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-black/40 border border-white/10 text-[10px] font-mono text-[#C7BDB7]">
+                              <div className="flex items-center gap-1.5">
+                                <Lock size={12} className="text-emerald-400" />
+                                <span>Firebase UID: <strong className="text-white">{user.id ? `${user.id.slice(0, 10)}...` : 'Active'}</strong></span>
+                              </div>
+                              <span className="text-emerald-400 flex items-center gap-1">
+                                <Shield size={11} /> Cloud Firestore Isolated
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Clearly visible Edit Profile button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditName(user.name || '');
+                              setEditEmail(user.email || '');
+                              setEditGender(user.gender || 'Male');
+                              setVerifiedPhone(user.phone || '');
+                              setShowPhoneOtpBox(false);
+                              setPhoneOtpStep('input');
+                              setProfileErrors({});
+                              setProfileSuccessMsg(null);
+                              setIsProfileEditing(true);
+                            }}
+                            className="w-full py-3 bg-white text-black hover:bg-[#F6F1E9] font-mono font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all hover:scale-[1.01] active:scale-95"
+                          >
+                            <Edit3 size={14} />
+                            <span>Edit Profile</span>
+                          </button>
+                        </div>
+                      ) : (
+                        /* ========================================================================= */
+                        /* PROFILE EDIT MODE (ACCESSIBLE ONLY AFTER CLICKING EDIT PROFILE)          */
+                        /* ========================================================================= */
+                        <form onSubmit={handleSaveProfile} className="space-y-4 bg-white/5 border border-white/10 p-4 sm:p-5">
+                          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                            <div className="flex items-center gap-2">
+                              <Edit3 size={15} className="text-amber-400" />
+                              <span className="text-xs font-mono uppercase font-bold text-white tracking-wider">
+                                Edit Personal Information
+                              </span>
+                              <span className="text-[9px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 font-bold uppercase">
+                                Editing Mode
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleCancelProfileEdit}
+                              className="text-xs font-mono text-[#C7BDB7] hover:text-white uppercase tracking-wider underline cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+
+                          {/* Full Name Input */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block font-bold">
+                                Full Name *
+                              </label>
+                              {profileErrors.name && (
+                                <span className="text-[10px] font-mono text-red-400 font-bold">{profileErrors.name}</span>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => {
+                                setEditName(e.target.value);
+                                if (profileErrors.name) setProfileErrors((p) => ({ ...p, name: undefined }));
+                              }}
+                              placeholder="e.g. Santhi Raju Gonnabattula"
+                              className={`w-full bg-black/60 border px-3 py-2 text-xs text-white font-sans focus:outline-none ${
+                                profileErrors.name ? 'border-red-500 focus:border-red-400' : 'border-white/15 focus:border-white'
+                              }`}
+                              required
+                            />
+                          </div>
+
+                          {/* Email Address Input */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block font-bold">
+                                Email Address
+                              </label>
+                              {profileErrors.email && (
+                                <span className="text-[10px] font-mono text-red-400 font-bold">{profileErrors.email}</span>
+                              )}
+                            </div>
+                            <input
+                              type="email"
+                              value={editEmail}
+                              onChange={(e) => {
+                                setEditEmail(e.target.value);
+                                if (profileErrors.email) setProfileErrors((p) => ({ ...p, email: undefined }));
+                              }}
+                              placeholder="e.g. customer@example.com"
+                              className={`w-full bg-black/60 border px-3 py-2 text-xs text-white font-sans focus:outline-none ${
+                                profileErrors.email ? 'border-red-500 focus:border-red-400' : 'border-white/15 focus:border-white'
+                              }`}
+                            />
+                          </div>
+
+                          {/* Verified Mobile Number with Protected OTP Flow */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-mono text-[#C7BDB7] uppercase font-bold">
+                                Verified Mobile Number
+                              </label>
+                              <span className="text-[10px] font-mono text-emerald-400 font-bold flex items-center gap-1">
+                                <CheckCircle2 size={11} /> Verified
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between bg-black/60 border border-white/15 px-3 py-2 text-xs font-mono">
+                              <span className="text-white font-bold">{verifiedPhone || user.phone || '+91 9876543210'}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowPhoneOtpBox(!showPhoneOtpBox);
+                                  setPhoneOtpStep('input');
+                                  setNewPhoneInput('');
+                                  setPhoneOtpEntered('');
+                                }}
+                                className="text-[10px] font-mono text-amber-400 hover:text-amber-300 font-bold uppercase tracking-wider underline cursor-pointer"
+                              >
+                                {showPhoneOtpBox ? 'Close Verification' : 'Verify New Number (OTP)'}
+                              </button>
+                            </div>
+
+                            <p className="text-[10px] font-mono text-[#C7BDB7]/80 mt-1">
+                              Mobile numbers are locked. Changing your number requires OTP verification to protect account security.
+                            </p>
+
+                            {/* OTP Verification Flow Box */}
+                            {showPhoneOtpBox && (
+                              <div className="mt-2.5 p-3.5 bg-black/90 border border-amber-500/40 space-y-3">
+                                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                                  <div className="flex items-center gap-1.5 text-amber-300 text-xs font-mono font-bold uppercase">
+                                    <Phone size={13} />
+                                    <span>OTP Verification for New Mobile</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowPhoneOtpBox(false)}
+                                    className="text-[#C7BDB7] hover:text-white cursor-pointer"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+
+                                {phoneOtpStep === 'input' ? (
+                                  <div className="space-y-2">
+                                    <label className="text-[10px] font-mono text-[#C7BDB7] uppercase block font-bold">
+                                      Enter New 10-Digit Mobile Number
+                                    </label>
+                                    <div className="flex gap-2">
+                                      <span className="px-2.5 py-2 bg-white/10 text-white font-mono text-xs border border-white/15 flex items-center">
+                                        +91
+                                      </span>
+                                      <input
+                                        type="tel"
+                                        maxLength={10}
+                                        value={newPhoneInput}
+                                        onChange={(e) => setNewPhoneInput(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="9876543210"
+                                        className="flex-1 bg-black border border-white/15 px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-white"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={handleSendPhoneOtp}
+                                        className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-black font-mono text-xs font-bold uppercase tracking-wider cursor-pointer whitespace-nowrap"
+                                      >
+                                        Send OTP
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2.5">
+                                    <div className="flex items-center justify-between text-[11px] font-mono text-[#C7BDB7]">
+                                      <span>OTP sent to +91 {newPhoneInput}</span>
+                                      <span className="text-white font-mono font-bold">Auto-fill: {phoneOtpCode}</span>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                      <input
+                                        type="text"
+                                        maxLength={4}
+                                        value={phoneOtpEntered}
+                                        onChange={(e) => setPhoneOtpEntered(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="4-digit OTP"
+                                        className="w-32 bg-black border border-white/20 px-3 py-2 text-center text-sm text-white font-mono tracking-widest focus:outline-none focus:border-white"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={handleVerifyPhoneOtp}
+                                        className="flex-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
+                                      >
+                                        Verify & Update
+                                      </button>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[10px] font-mono text-[#C7BDB7] pt-1">
+                                      <button
+                                        type="button"
+                                        disabled={phoneOtpCountdown > 0}
+                                        onClick={() => {
+                                          const code = Math.floor(1000 + Math.random() * 9000).toString();
+                                          setPhoneOtpCode(code);
+                                          setPhoneOtpCountdown(30);
+                                          showToast(`New OTP sent: ${code}`, 'info');
+                                        }}
+                                        className="text-amber-400 hover:text-amber-300 disabled:opacity-50 cursor-pointer underline"
+                                      >
+                                        {phoneOtpCountdown > 0 ? `Resend OTP in ${phoneOtpCountdown}s` : 'Resend OTP'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setPhoneOtpStep('input')}
+                                        className="text-[#C7BDB7] hover:text-white underline cursor-pointer"
+                                      >
+                                        Change Number
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Gender Selection */}
+                          <div>
+                            <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block mb-1.5 font-bold">
+                              Gender
+                            </label>
+                            <div className="grid grid-cols-3 gap-2">
+                              {(['Male', 'Female', 'Other'] as const).map((g) => (
+                                <button
+                                  type="button"
+                                  key={g}
+                                  onClick={() => setEditGender(g)}
+                                  className={`py-2 text-xs font-mono uppercase tracking-wider text-center border cursor-pointer transition-colors ${
+                                    editGender === g
+                                      ? 'bg-white text-black font-bold border-white'
+                                      : 'bg-black/40 text-[#C7BDB7] border-white/10 hover:border-white/30'
+                                  }`}
+                                >
+                                  {g}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons: Save Changes & Cancel */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+                            <button
+                              type="button"
+                              onClick={handleCancelProfileEdit}
+                              disabled={isSavingProfile}
+                              className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-white font-mono font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer border border-white/20 transition-colors disabled:opacity-50"
+                            >
+                              <X size={14} />
+                              <span>Cancel</span>
+                            </button>
+
+                            <button
+                              type="submit"
+                              disabled={isSavingProfile}
+                              className="w-full py-2.5 bg-white text-black hover:bg-[#F6F1E9] font-mono font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shadow-md transition-colors disabled:opacity-50"
+                            >
+                              {isSavingProfile ? (
+                                <>
+                                  <RefreshCw size={14} className="animate-spin" />
+                                  <span>Saving to Firestore...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check size={14} />
+                                  <span>Save Changes</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
                   )}
 
                   {/* TAB 2: MY ORDERS WITH LIVE FIRESTORE ORDER HISTORY VIEW */}

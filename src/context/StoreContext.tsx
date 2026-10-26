@@ -136,7 +136,7 @@ interface StoreContextType {
   // Auth User & Admin state
   user: AuthUser | null;
   setUser: (user: AuthUser | null) => void;
-  updateUserProfile: (updates: Partial<AuthUser>) => void;
+  updateUserProfile: (updates: Partial<AuthUser>) => Promise<{ success: boolean; message: string }>;
   isAdmin: boolean;
   loginCustomer: (phone: string, otp: string, name?: string) => { success: boolean; message: string };
   loginAdmin: (username: string, password: string) => { success: boolean; message: string };
@@ -233,7 +233,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const canGoBack = viewHistory.length > 0 || currentView !== 'home';
+  const canGoBack = currentView !== 'home';
   const [currency, setCurrency] = useState<Currency>('INR');
 
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -617,14 +617,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: false, message: 'Invalid admin credentials. Use admin / snapster2026' };
   };
 
-  const updateUserProfile = (updates: Partial<AuthUser>) => {
-    if (!user) return;
+  const updateUserProfile = async (updates: Partial<AuthUser>): Promise<{ success: boolean; message: string }> => {
+    if (!user) {
+      showToast('No active customer session found', 'error');
+      return { success: false, message: 'No active customer session found' };
+    }
     const updated = { ...user, ...updates };
     setUser(updated);
     if (user.id) {
-      updateUserProfileService(user.id, updates).catch(console.warn);
+      try {
+        await updateUserProfileService(user.id, updates);
+        showToast('Profile saved to Firestore successfully!', 'success');
+        return { success: true, message: 'Profile saved successfully' };
+      } catch (err: any) {
+        const errorMsg = err?.message || 'Failed to update profile in Firestore.';
+        showToast(errorMsg, 'error');
+        return { success: false, message: errorMsg };
+      }
+    } else {
+      showToast('Profile saved locally', 'success');
+      return { success: true, message: 'Profile saved locally' };
     }
-    showToast('Profile information saved successfully!', 'success');
   };
 
   const loginWithGoogle = async (): Promise<boolean> => {

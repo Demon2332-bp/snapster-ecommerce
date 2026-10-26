@@ -158,14 +158,16 @@ export const Header: React.FC = () => {
           
           {/* Mobile Hamburger & Back Arrow Navigation */}
           <div className="flex items-center gap-1.5 md:hidden">
-            <button
-              onClick={handleBackClick}
-              className="p-1.5 text-[#F6F1E9] hover:text-white transition-colors focus:outline-none flex items-center justify-center cursor-pointer active:scale-95"
-              aria-label="Go back to previous page"
-              title="Go back to previous page"
-            >
-              <ArrowLeft size={22} />
-            </button>
+            {currentView !== 'home' && (
+              <button
+                onClick={handleBackClick}
+                className="p-1.5 text-[#F6F1E9] hover:text-white transition-colors focus:outline-none flex items-center justify-center cursor-pointer active:scale-95"
+                aria-label="Go back to previous page"
+                title="Go back to previous page"
+              >
+                <ArrowLeft size={22} />
+              </button>
+            )}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="p-1.5 text-[#F6F1E9] hover:text-white transition-colors focus:outline-none"
@@ -177,16 +179,18 @@ export const Header: React.FC = () => {
 
           {/* Left / Desktop Logo & Back Button */}
           <div className="flex items-center gap-3 shrink-0">
-            {/* Back Arrow Button */}
-            <button
-              onClick={handleBackClick}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-black/40 hover:bg-black/70 active:scale-95 text-[#F6F1E9] hover:text-white rounded border border-white/15 text-xs font-mono uppercase tracking-wider transition-all cursor-pointer group shadow-sm"
-              aria-label="Go back"
-              title={currentView !== 'home' ? 'Go back to previous / main page' : 'Go back to previous page'}
-            >
-              <ArrowLeft size={14} className="transition-transform duration-200 group-hover:-translate-x-1 text-white" />
-              <span className="font-bold">Back</span>
-            </button>
+            {/* Back Arrow Button - Only shown when not on home page */}
+            {currentView !== 'home' && (
+              <button
+                onClick={handleBackClick}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-black/40 hover:bg-black/70 active:scale-95 text-[#F6F1E9] hover:text-white rounded border border-white/15 text-xs font-mono uppercase tracking-wider transition-all cursor-pointer group shadow-sm"
+                aria-label="Go back"
+                title="Go back to previous page"
+              >
+                <ArrowLeft size={14} className="transition-transform duration-200 group-hover:-translate-x-1 text-white" />
+                <span className="font-bold">Back</span>
+              </button>
+            )}
 
             <button
               onClick={() => handleNavClick('home')}
