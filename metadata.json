@@ -1,0 +1,6 @@
+{
+  "name": "SNAPSTER — Premium Streetwear & Contemporary Fashion",
+  "description": "Your Day. Your Drip. SNAPSTER is an international premium streetwear brand featuring oversized silhouettes, heavyweight fabrics, and architectural campaign drops.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

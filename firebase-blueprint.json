@@ -1,0 +1,162 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile details and role",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "admin"] },
+        "photoURL": { "type": "string" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "UserAddress": {
+      "title": "UserAddress",
+      "description": "Customer delivery address in Vijayawada or India",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "street": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "pincode": { "type": "string" },
+        "isDefault": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "fullName", "phone", "street", "city", "state", "pincode"]
+    },
+    "UserCart": {
+      "title": "UserCart",
+      "description": "Persistent customer cart synced across devices",
+      "type": "object",
+      "properties": {
+        "items": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["items", "updatedAt"]
+    },
+    "UserWishlist": {
+      "title": "UserWishlist",
+      "description": "Persistent customer saved wishlist",
+      "type": "object",
+      "properties": {
+        "productIds": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["productIds", "updatedAt"]
+    },
+    "UserNotification": {
+      "title": "UserNotification",
+      "description": "In-app notifications for order updates and promos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["order", "promo", "system"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "type", "read", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Luxury streetwear piece in SNAPSTER catalog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "isNew": { "type": "boolean" },
+        "isBestSeller": { "type": "boolean" },
+        "image": { "type": "string" },
+        "secondaryImage": { "type": "string" },
+        "gallery": { "type": "array" },
+        "colors": { "type": "array" },
+        "sizes": { "type": "array" },
+        "description": { "type": "string" },
+        "fabric": { "type": "string" },
+        "gsm": { "type": "number" },
+        "fit": { "type": "string" },
+        "stock": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "measurements": { "type": "array" },
+        "reviews": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "price", "image", "stock"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer purchase with payment and live delivery tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "shipping": { "type": "number" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string", "enum": ["Pending", "Paid", "Failed", "Refunded", "COD Pending", "COD Collected"] },
+        "paymentId": { "type": "string" },
+        "razorpayOrderId": { "type": "string" },
+        "razorpaySignature": { "type": "string" },
+        "shippingAddress": { "type": "object" },
+        "status": { "type": "string", "enum": ["Confirmed", "Processing", "Packed at Hub", "Shipped", "Out for Delivery", "Delivered", "Cancelled"] },
+        "awbNumber": { "type": "string" },
+        "estimatedDelivery": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "items", "total", "shippingAddress", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile document storing personal info and role"
+    },
+    "/users/{userId}/addresses/{addressId}": {
+      "schema": { "$ref": "#/entities/UserAddress" },
+      "description": "Subcollection of saved delivery addresses for a customer"
+    },
+    "/users/{userId}/cart/current": {
+      "schema": { "$ref": "#/entities/UserCart" },
+      "description": "Active shopping cart for the user"
+    },
+    "/users/{userId}/wishlist/current": {
+      "schema": { "$ref": "#/entities/UserWishlist" },
+      "description": "Saved wishlist products for the user"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/UserNotification" },
+      "description": "Notification history for the user"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Master product catalog documents"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Placed orders with delivery tracking"
+    }
+  }
+}
