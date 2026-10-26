@@ -30,6 +30,7 @@ import { OrderTrackingModal } from './components/OrderTrackingModal';
 import { PromoOffersModal } from './components/PromoOffersModal';
 import { PoliciesModal } from './components/PoliciesModal';
 import { ToastContainer } from './components/ToastContainer';
+import { BrandSplashScreen } from './components/BrandSplashScreen';
 
 const MainContent: React.FC = () => {
   const { currentView } = useStore();
@@ -80,6 +81,7 @@ export default function App() {
   return (
     <StoreProvider>
       <div className="min-h-screen bg-[#111011] text-[#F6F1E9]">
+        <BrandSplashScreen />
         <AdminBar />
         <Header />
         <MainContent />
