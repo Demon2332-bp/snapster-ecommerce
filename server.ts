@@ -533,15 +533,15 @@ app.post('/api/razorpay/webhook', async (req: Request, res: Response) => {
     if (req.body?.event === 'payment.captured') {
       await markPaymentCaptured(req.body.payload?.payment?.entity);
     } else if (req.body?.event === 'payment.failed') {
+      // A Razorpay order can have multiple payment attempts. One failed attempt
+      // must not cancel the SNAPSTER order or release its reserved stock because
+      // the customer may retry and a later attempt may be captured successfully.
+      // The reservation is released by the expiry job after the retry window.
       const failedPayment = req.body.payload?.payment?.entity;
-      const gatewayOrderId = failedPayment?.order_id;
-      if (gatewayOrderId && firebaseAdmin) {
-        const matches = await firebaseAdmin.db.collection('orders')
-          .where('razorpayOrderId', '==', gatewayOrderId).limit(1).get();
-        if (!matches.empty) {
-          await releaseReservedStock(matches.docs[0].ref, 'Razorpay payment failed.');
-        }
-      }
+      console.info('[Razorpay Webhook] Payment attempt failed:', {
+        paymentId: failedPayment?.id,
+        gatewayOrderId: failedPayment?.order_id,
+      });
     }
     return res.json({ status: 'ok', received: true });
   } catch (error) {
