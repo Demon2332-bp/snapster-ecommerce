@@ -15,167 +15,163 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
-// Support raw body for webhook signature verification if needed, alongside standard JSON parser
-app.use(express.json());
+// Preserve the exact incoming JSON bytes for Razorpay webhook HMAC verification.
+type RequestWithRawBody = Request & { rawBody?: Buffer };
+app.use(express.json({
+  verify: (req, _res, buffer) => {
+    (req as RequestWithRawBody).rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 
-// Razorpay Instance (initialized if credentials provided)
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || '';
+// Never read a Razorpay secret from a Vite-prefixed/public environment variable.
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
 
 let razorpayClient: Razorpay | null = null;
 if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
-  try {
-    razorpayClient = new Razorpay({
-      key_id: RAZORPAY_KEY_ID,
-      key_secret: RAZORPAY_KEY_SECRET,
-    });
-    console.log('[Razorpay] Initialized official SDK with provided credentials.');
-  } catch (err) {
-    console.warn('[Razorpay] Could not initialize SDK:', err);
-  }
+  razorpayClient = new Razorpay({
+    key_id: RAZORPAY_KEY_ID,
+    key_secret: RAZORPAY_KEY_SECRET,
+  });
+  console.log('[Razorpay] Server SDK initialized.');
 } else {
-  console.log('[Razorpay] Running in Test Simulation mode. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env for live test gateway.');
+  console.error('[Razorpay] Credentials are missing. Online payments are disabled.');
 }
 
-// In-memory processed payment cache to prevent replay attacks / duplicate orders
+// Temporary process-local replay guard only. Replace with a durable Firestore
+// transaction/unique payment record before running multiple instances.
 const processedPayments = new Set<string>();
 
-/* ========================================================================= */
-/* API ROUTES                                                                */
-/* ========================================================================= */
+function safeHexEqual(actual: string, expected: string): boolean {
+  if (!/^[a-f0-9]+$/i.test(actual) || !/^[a-f0-9]+$/i.test(expected)) return false;
+  const actualBuffer = Buffer.from(actual, 'hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  return actualBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
 
-// GET Public Razorpay Key ID (NEVER exposes secret)
 app.get('/api/razorpay/key', (_req: Request, res: Response) => {
-  res.json({
-    keyId: RAZORPAY_KEY_ID || 'rzp_test_snapster_demo',
-    isConfigured: Boolean(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET),
-  });
+  if (!razorpayClient || !RAZORPAY_KEY_ID) {
+    return res.status(503).json({ error: 'Online payments are not configured.' });
+  }
+  return res.json({ keyId: RAZORPAY_KEY_ID, isConfigured: true });
 });
 
-// POST Create Razorpay Order
 app.post('/api/razorpay/create-order', async (req: Request, res: Response) => {
   try {
-    const { amount, currency = 'INR', receipt, notes } = req.body;
-
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: 'Valid amount is required.' });
+    if (!razorpayClient) {
+      return res.status(503).json({ error: 'Online payments are not configured.' });
     }
 
-    // Convert INR rupees to paise (e.g. ₹1999 -> 199900 paise)
-    const amountInPaise = Math.round(Number(amount) * 100);
-    const receiptId = receipt || `rcpt_${Date.now()}`;
-
-    // If Razorpay SDK is configured with valid credentials, use official gateway
-    if (razorpayClient) {
-      const order = await razorpayClient.orders.create({
-        amount: amountInPaise,
-        currency,
-        receipt: receiptId,
-        notes: notes || { brand: 'SNAPSTER Streetwear', store: 'Vijayawada AP' },
-      });
-
-      return res.json({
-        id: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        receipt: order.receipt,
-        keyId: RAZORPAY_KEY_ID,
-        isSimulated: false,
-      });
+    const amount = Number(req.body?.amount);
+    const currency = req.body?.currency || 'INR';
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 10000000) {
+      return res.status(400).json({ error: 'A valid order amount is required.' });
+    }
+    if (currency !== 'INR') {
+      return res.status(400).json({ error: 'Only INR payments are supported.' });
     }
 
-    // Safe Test Simulation fallback for local verification before developer configures live keys
-    const simulatedOrderId = `order_${crypto.randomBytes(8).toString('hex')}`;
-    res.json({
-      id: simulatedOrderId,
+    const amountInPaise = Math.round(amount * 100);
+    if (!Number.isSafeInteger(amountInPaise) || amountInPaise <= 0) {
+      return res.status(400).json({ error: 'Invalid payment amount.' });
+    }
+
+    const receiptId = typeof req.body?.receipt === 'string'
+      ? req.body.receipt.slice(0, 40)
+      : `snapster_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
+
+    const order = await razorpayClient.orders.create({
       amount: amountInPaise,
-      currency,
+      currency: 'INR',
       receipt: receiptId,
-      keyId: RAZORPAY_KEY_ID || 'rzp_test_snapster_demo',
-      isSimulated: true,
-      message: 'Simulated Razorpay order created. Configure RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET for live test gateway.',
+      notes: { brand: 'SNAPSTER Streetwear' },
+    });
+
+    return res.json({
+      id: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      receipt: order.receipt,
+      keyId: RAZORPAY_KEY_ID,
     });
   } catch (err: any) {
     console.error('[Razorpay] create-order failed:', err);
-    res.status(500).json({ error: err.message || 'Failed to create Razorpay order' });
+    return res.status(500).json({ error: 'Unable to create payment order.' });
   }
 });
 
-// POST Verify Razorpay Signature (Server-Side Cryptographic Verification)
 app.post('/api/razorpay/verify-payment', (req: Request, res: Response) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, order_id } = req.body;
-
-    if (!razorpay_payment_id) {
-      return res.status(400).json({ verified: false, error: 'Missing payment ID' });
+    if (!RAZORPAY_KEY_SECRET) {
+      return res.status(503).json({ verified: false, error: 'Payment verification is not configured.' });
     }
 
-    // Prevent duplicate processing
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+    if (
+      typeof razorpay_order_id !== 'string' ||
+      typeof razorpay_payment_id !== 'string' ||
+      typeof razorpay_signature !== 'string' ||
+      !razorpay_order_id ||
+      !razorpay_payment_id ||
+      !razorpay_signature
+    ) {
+      return res.status(400).json({ verified: false, error: 'Missing required Razorpay payment details.' });
+    }
+
     if (processedPayments.has(razorpay_payment_id)) {
-      return res.status(409).json({
-        verified: false,
-        duplicate: true,
-        error: 'Duplicate payment detected. This payment has already been verified and processed.',
-      });
+      return res.status(409).json({ verified: false, duplicate: true, error: 'Payment was already processed.' });
     }
 
-    // If key secret is present, verify HMAC-SHA256 signature
-    if (RAZORPAY_KEY_SECRET && razorpay_order_id && razorpay_signature) {
-      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
-      const expectedSignature = crypto
-        .createHmac('sha256', RAZORPAY_KEY_SECRET)
-        .update(body)
-        .digest('hex');
+    const payload = `${razorpay_order_id}|${razorpay_payment_id}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', RAZORPAY_KEY_SECRET)
+      .update(payload)
+      .digest('hex');
 
-      if (expectedSignature !== razorpay_signature) {
-        return res.status(400).json({
-          verified: false,
-          error: 'Invalid Razorpay payment signature. Tampering suspected.',
-        });
-      }
+    if (!safeHexEqual(razorpay_signature, expectedSignature)) {
+      return res.status(400).json({ verified: false, error: 'Invalid Razorpay payment signature.' });
     }
 
-    // Mark as processed
     processedPayments.add(razorpay_payment_id);
-
-    res.json({
+    return res.json({
       verified: true,
       paymentId: razorpay_payment_id,
-      orderId: razorpay_order_id || order_id,
-      paymentStatus: 'Paid',
+      orderId: razorpay_order_id,
+      paymentStatus: 'Signature Verified',
       timestamp: new Date().toISOString(),
-      message: 'Payment signature verified successfully by SNAPSTER server.',
     });
   } catch (err: any) {
     console.error('[Razorpay] verify-payment failed:', err);
-    res.status(500).json({ verified: false, error: err.message || 'Payment verification failed' });
+    return res.status(500).json({ verified: false, error: 'Payment verification failed.' });
   }
 });
 
-// POST Razorpay Webhooks endpoint
 app.post('/api/razorpay/webhook', (req: Request, res: Response) => {
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  const signature = req.headers['x-razorpay-signature'] as string;
+  const signature = req.headers['x-razorpay-signature'];
 
-  if (webhookSecret && signature) {
-    const rawBody = JSON.stringify(req.body);
-    const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
-    if (expected !== signature) {
-      return res.status(400).send('Invalid signature');
-    }
+  if (!webhookSecret || typeof signature !== 'string') {
+    return res.status(503).send('Webhook verification is not configured.');
   }
 
-  const event = req.body.event;
-  console.log('[Razorpay Webhook Event Received]:', event);
+  const rawBody = (req as RequestWithRawBody).rawBody;
+  if (!rawBody) {
+    return res.status(400).send('Missing raw webhook body.');
+  }
 
-  // Acknowledge receipt
-  res.json({ status: 'ok', received: true });
+  const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+  if (!safeHexEqual(signature, expected)) {
+    return res.status(400).send('Invalid webhook signature.');
+  }
+
+  const event = req.body?.event;
+  console.log('[Razorpay Webhook Event Received]:', event || 'unknown');
+  // Event persistence/order-state updates must be implemented before relying on
+  // webhooks for fulfillment. Acknowledge only after signature validation.
+  return res.json({ status: 'ok', received: true });
 });
-
-/* ========================================================================= */
-/* VITE DEV MIDDLEWARE / STATIC PRODUCTION SERVING                           */
-/* ========================================================================= */
 
 async function startServer() {
   if (!isProd) {
