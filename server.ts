@@ -85,6 +85,15 @@ async function requireUser(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const user = (req as RequestWithRawBody).user;
+  if (!user) return res.status(401).json({ error: 'Authentication required.' });
+  if (user.email_verified !== true || !user.email || !ADMIN_EMAILS.has(user.email.toLowerCase())) {
+    return res.status(403).json({ error: 'Administrator access is required.' });
+  }
+  return next();
+}
+
 function validText(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
 }
@@ -338,6 +347,38 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
     console.error('[Orders] create failed:', error);
     const message = error instanceof Error ? error.message : 'Unable to create order.';
     return res.status(400).json({ error: message });
+  }
+});
+
+const ALLOWED_ORDER_STATUSES = new Set([
+  'Confirmed', 'Processing', 'Packed at Hub', 'Shipped',
+  'Out for Delivery', 'Delivered', 'Cancelled',
+]);
+
+app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async (req: Request, res: Response) => {
+  if (!firebaseAdmin) return res.status(503).json({ error: 'Database unavailable.' });
+  const orderId = req.params.orderId;
+  const status = req.body?.status;
+  if (!validText(orderId, 150) || !ALLOWED_ORDER_STATUSES.has(status)) {
+    return res.status(400).json({ error: 'Invalid order ID or status.' });
+  }
+  try {
+    const ref = firebaseAdmin.db.collection('orders').doc(orderId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Order not found.' });
+    const order = snap.data()!;
+    if (order.status === 'Delivered' || order.status === 'Cancelled') {
+      return res.status(409).json({ error: 'This order is already in a final state.' });
+    }
+    if (status === 'Delivered' && order.paymentMethod !== 'Cash on Delivery' &&
+        order.paymentStatus !== 'Paid') {
+      return res.status(409).json({ error: 'An unpaid online order cannot be marked delivered.' });
+    }
+    await ref.update({ status, updatedAt: new Date().toISOString() });
+    return res.json({ success: true, orderId, status });
+  } catch (error) {
+    console.error('[Admin] Order status update failed:', error);
+    return res.status(500).json({ error: 'Could not update order status.' });
   }
 });
 
