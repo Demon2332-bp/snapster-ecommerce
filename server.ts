@@ -172,27 +172,27 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
     return res.status(503).json({ error: 'Online payments are not configured.' });
   }
 
-  const normalized: Array<{ productId: string; size: string; color: string; quantity: number }> = [];
+  const requestedItems: Array<{ productId: string; size: string; color: string; quantity: number }> = [];
   for (const item of requested) {
     if (!validText(item?.productId, 120) || !validText(item?.size, 10) ||
         !validText(item?.color, 80) || !Number.isSafeInteger(item?.quantity) ||
         item.quantity < 1 || item.quantity > 10) {
       return res.status(400).json({ error: 'One or more cart items are invalid.' });
     }
-    normalized.push({
+    requestedItems.push({
       productId: item.productId.trim(),
       size: item.size.trim(),
       color: item.color.trim(),
       quantity: item.quantity,
     });
   }
-  if (paymentMethod === 'cod' && normalized.reduce((sum, item) => sum + item.quantity, 0) > 10) {
+  const mergedItems = new Map<string, { productId: string; size: string; color: string; quantity: number }>();\n  for (const item of requestedItems) {\n    const key = [item.productId, item.size, item.color].join('::');\n    const current = mergedItems.get(key);\n    if (current) current.quantity += item.quantity; else mergedItems.set(key, { ...item });\n  }\n  const normalized = [...mergedItems.values()];\n  if (normalized.some((item) => item.quantity > 10)) return res.status(400).json({ error: 'Maximum quantity per product variant is 10.' });\n  if (paymentMethod === 'cod' && normalized.reduce((sum, item) => sum + item.quantity, 0) > 10) {
     return res.status(400).json({ error: 'Cash on Delivery is limited to 10 items per order.' });
   }
 
   const { db } = firebaseAdmin;
   const orderRef = db.collection('orders').doc();
-  const publicOrderId = 'SNP-' + orderRef.id.slice(-8).toUpperCase();
+  const publicOrderId = orderRef.id;
   const productRefs = normalized.map((item) => db.collection('products').doc(item.productId));
   let orderData: any;
 
@@ -247,7 +247,7 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
         updatedAt: new Date().toISOString(),
         items,
         subtotal,
-        discount: 0,
+        discount,
         shipping,
         total,
         paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Razorpay',
