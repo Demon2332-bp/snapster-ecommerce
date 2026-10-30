@@ -1,7 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -10,22 +9,15 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Admin authorization must come from a trusted custom claim or a verified
-    // allowlisted email. Never trust a client-writable Firestore admin document.
+    // Never trust a client-editable Firestore document for administrator roles.
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.admin == true ||
+      return isSignedIn() && request.auth.token.email_verified == true &&
         (
-          request.auth.token.email_verified == true &&
-          (
-            request.auth.token.email == 'santhirajugonnabattula@gmail.com' ||
-            request.auth.token.email == 'admin@snapster.in'
-          )
-        )
-      );
+          request.auth.token.email == 'santhirajugonnabattula@gmail.com' ||
+          request.auth.token.email == 'admin@snapster.in'
+        );
     }
 
-    // Admin registry is readable only by administrators and cannot grant roles.
     match /admins/{adminId} {
       allow read, write: if isAdmin();
     }
@@ -43,15 +35,12 @@ service cloud.firestore {
       match /addresses/{addressId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
-
       match /cart/{docId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
-
       match /wishlist/{docId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
-
       match /notifications/{notificationId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
@@ -62,13 +51,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Keep existing order writes temporarily compatible with the current
-    // client checkout. Move order creation to a trusted server endpoint before
-    // tightening this rule to prevent forged "Paid" client documents.
+    // All order creation, stock and payment state changes use trusted backend credentials.
     match /orders/{orderId} {
-      allow read: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /paymentEvents/{paymentId} {
+      allow read, write: if false;
     }
   }
 }
