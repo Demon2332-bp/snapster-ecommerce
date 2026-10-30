@@ -641,7 +641,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const profile = await signUpWithEmailService(email, pass, name, phone);
       setUser(profile);
-      showToast(`Welcome to SNAPSTER, ${profile.name}! VIP Account registered.`, 'success');
+      showToast(`Welcome to SNAPSTER, ${profile.name}! Check your inbox to verify your email before checkout.`, 'success');
       setIsAuthModalOpen(false);
       if (pendingAction === 'cart') setIsCartOpen(true);
       else if (pendingAction === 'wishlist') setIsWishlistOpen(true);
