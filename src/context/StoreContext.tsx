@@ -139,7 +139,7 @@ interface StoreContextType {
   updateUserProfile: (updates: Partial<AuthUser>) => Promise<{ success: boolean; message: string }>;
   isAdmin: boolean;
   loginCustomer: (phone: string, otp: string, name?: string) => { success: boolean; message: string };
-  loginAdmin: (username: string, password: string) => { success: boolean; message: string };
+  loginAdmin: (username: string, password: string) => Promise<{ success: boolean; message: string }>;
   loginWithGoogle: () => Promise<boolean>;
   loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; message: string }>;
   registerWithEmail: (email: string, pass: string, name: string, phone?: string) => Promise<{ success: boolean; message: string }>;
