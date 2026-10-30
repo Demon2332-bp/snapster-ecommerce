@@ -74,7 +74,7 @@ async function requireUser(req: Request, res: Response, next: NextFunction) {
   if (!match) return res.status(401).json({ error: 'Please sign in before checkout.' });
   try {
     const decoded = await firebaseAdmin.auth.verifyIdToken(match[1], true);
-    (req as RequestWithRawBody).user = {
+    if (decoded.email && decoded.email_verified !== true) {\n      return res.status(403).json({ error: 'Please verify your email address before checkout.' });\n    }\n    (req as RequestWithRawBody).user = {
       uid: decoded.uid,
       email: decoded.email,
       email_verified: decoded.email_verified,
@@ -280,7 +280,7 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
       orderData = {
         id: publicOrderId,
         userId: (req as RequestWithRawBody).user!.uid,
-        customerName: req.body.customerName?.trim?.().slice(0, 100) || userRecord.displayName || 'Customer',
+        customerName: req.body.shippingAddress.fullName.trim(),
         customerEmail: userRecord.email || '',
         customerPhone: req.body.shippingAddress.phone,
         createdAt: new Date().toISOString(),
