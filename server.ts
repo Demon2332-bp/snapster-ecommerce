@@ -342,6 +342,57 @@ app.post('/api/razorpay/verify-payment', requireUser, async (req: Request, res: 
   }
 });
 
+async function releaseReservedStock(orderRef: FirebaseFirestore.DocumentReference, failureReason: string) {
+  if (!firebaseAdmin) throw new Error('Firebase Admin is unavailable.');
+  const { db } = firebaseAdmin;
+  await db.runTransaction(async (tx) => {
+    const orderSnap = await tx.get(orderRef);
+    if (!orderSnap.exists) return;
+    const order = orderSnap.data()!;
+    if (order.paymentStatus !== 'Pending') return;
+    const items = Array.isArray(order.items) ? order.items : [];
+    const refs = items.map((item: any) => db.collection('products').doc(String(item.productId)));
+    const productSnaps = await Promise.all(refs.map((ref: any) => tx.get(ref)));
+    for (let i = 0; i < refs.length; i++) {
+      if (productSnaps[i].exists) {
+        const quantity = Number(items[i].quantity);
+        const stock = Number(productSnaps[i].data()?.stock);
+        if (Number.isSafeInteger(quantity) && quantity > 0 && Number.isSafeInteger(stock)) {
+          tx.update(refs[i], { stock: stock + quantity, updatedAt: new Date().toISOString() });
+        }
+      }
+    }
+    tx.update(orderRef, {
+      paymentStatus: 'Failed',
+      status: 'Cancelled',
+      updatedAt: new Date().toISOString(),
+      paymentFailureReason: failureReason.slice(0, 160),
+    });
+  });
+}
+
+// Configure an external scheduler to call this endpoint every 5 minutes.
+// Pending Razorpay reservations older than 20 minutes are released safely.
+app.post('/api/maintenance/expire-pending-orders', async (req: Request, res: Response) => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.headers['x-cron-secret'] !== secret) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  if (!firebaseAdmin) return res.status(503).json({ error: 'Database unavailable.' });
+  const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  const pending = await firebaseAdmin.db.collection('orders')
+    .where('paymentStatus', '==', 'Pending')
+    .where('createdAt', '<=', cutoff)
+    .limit(100)
+    .get();
+  let released = 0;
+  for (const docSnap of pending.docs) {
+    await releaseReservedStock(docSnap.ref, 'Payment reservation expired.');
+    released++;
+  }
+  return res.json({ checked: pending.size, released });
+});
+
 app.post('/api/razorpay/webhook', async (req: Request, res: Response) => {
   const signature = req.headers['x-razorpay-signature'];
   const rawBody = (req as RequestWithRawBody).rawBody;
