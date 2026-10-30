@@ -438,12 +438,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const updateOrderStatus = (orderId: string, status: CustomerOrder['status']) => {
-    setOrders((prev) =>
-      prev.map((ord) => (ord.id === orderId ? { ...ord, status } : ord))
-    );
-    updateOrderStatusFirebase(orderId, status).catch(console.warn);
-    showToast(`Order #${orderId} marked as "${status}"`, 'success');
+  const updateOrderStatus = async (orderId: string, status: CustomerOrder['status']) => {
+    try {
+      await updateOrderStatusFirebase(orderId, status);
+      setOrders((prev) =>
+        prev.map((ord) => (ord.id === orderId ? { ...ord, status, updatedAt: new Date().toISOString() } : ord))
+      );
+      showToast(`Order #${orderId} marked as "${status}"`, 'success');
+    } catch (error: any) {
+      showToast(error?.message || 'Order status update failed.', 'error');
+    }
   };
 
   const refreshOrders = async () => {
