@@ -384,8 +384,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (fbUser) {
         try {
           const profile = await fetchUserProfileService(fbUser.uid);
+          const verifiedAdminEmail = fbUser.emailVerified &&
+            ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase());
           if (profile) {
-            setUser(profile);
+            // Firestore profile fields are user data, not an authorization source.
+            // Derive the UI role from Firebase Auth's verified identity instead.
+            setUser({ ...profile, role: verifiedAdminEmail ? 'admin' : 'customer' });
           }
           // Load persistent cart
           const remoteCart = await fetchUserCartService(fbUser.uid);
@@ -400,7 +404,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // Load orders
           const remoteOrders = await fetchOrdersService(
             fbUser.uid,
-            profile?.role === 'admin' || fbUser.email === 'admin@snapster.in'
+            verifiedAdminEmail
           );
           if (remoteOrders && remoteOrders.length > 0) {
             setOrders(remoteOrders);
