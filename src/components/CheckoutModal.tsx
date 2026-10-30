@@ -13,6 +13,7 @@ export const CheckoutModal: React.FC = () => {
     cartSubtotal,
     discountAmount,
     shippingFee,
+    appliedPromo,
     showToast,
     formatPrice,
     currency,
@@ -129,6 +130,7 @@ export const CheckoutModal: React.FC = () => {
           shippingAddress: pendingOrder.shippingAddress,
           paymentMethod: 'cod',
           customerName: formData.fullName,
+          promoCode: appliedPromo,
         });
         setOrderNumber(created.id);
         setPaidPaymentId(null);
@@ -150,6 +152,7 @@ export const CheckoutModal: React.FC = () => {
       customerName: formData.fullName,
       customerEmail: formData.email,
       customerPhone: formData.phone,
+      promoCode: appliedPromo,
       onSuccess: ({ paymentId, orderId, signature, method, order: confirmedOrder }) => {
         pendingOrder.paymentStatus = 'Paid';
         pendingOrder.paymentId = paymentId;
