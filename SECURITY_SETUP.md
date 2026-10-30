@@ -42,7 +42,7 @@ Send header `x-cron-secret: YOUR_CRON_SECRET`. Orders awaiting payment for more 
 
 ## Firestore deployment
 
-Deploy the updated `firestore.rules` to the same named Firestore database used by this application. Orders and paymentEvents are server-write-only after deployment. Existing client-side order status editing will stop working until it is migrated to a verified admin API.
+Deploy the updated `firestore.rules` to the same named Firestore database used by this application. Orders and paymentEvents are server-write-only after deployment. Order status updates use the authenticated administrator API; direct browser order writes remain blocked.
 
 ## Product data requirements
 
