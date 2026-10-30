@@ -1,17 +1,38 @@
+import { auth } from './firebase';
 import { CustomerOrder } from '../types/store';
 
 declare global {
-  interface Window {
-    Razorpay?: any;
-  }
+  interface Window { Razorpay?: any; }
 }
 
-export interface RazorpayPaymentResult {
-  success: boolean;
-  paymentId?: string;
-  orderId?: string;
-  signature?: string;
-  error?: string;
+export interface SecureOrderInput {
+  items: Array<{ productId: string; size: string; color: string; quantity: number }>;
+  shippingAddress: CustomerOrder['shippingAddress'];
+  paymentMethod: 'cod' | 'razorpay';
+  customerName?: string;
+}
+
+async function authenticatedPost(path: string, body: unknown) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Please sign in before placing an order.');
+  const token = await user.getIdToken();
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'The secure checkout request failed.');
+  return data;
+}
+
+export async function createSecureOrder(input: SecureOrderInput): Promise<CustomerOrder> {
+  const data = await authenticatedPost('/api/orders', input);
+  if (!data.order?.id) throw new Error('The server did not return a valid order.');
+  return data.order as CustomerOrder;
 }
 
 export interface RazorpayOptions {
@@ -19,101 +40,85 @@ export interface RazorpayOptions {
   customerName: string;
   customerEmail?: string;
   customerPhone?: string;
-  onSuccess: (paymentDetails: {
-    paymentId: string;
-    orderId?: string;
-    signature?: string;
-    method?: string;
-  }) => void;
-  onFailure: (errorMessage: string) => void;
+  onSuccess: (details: { paymentId: string; orderId: string; signature: string; method: string; order: CustomerOrder }) => void;
+  onFailure: (message: string) => void;
 }
 
 /**
- * Uses a server-created Razorpay order and requires a positive server-side
- * signature verification response. No client-side or simulated payment fallback.
+ * The browser never supplies an amount. The authenticated server loads product
+ * prices, reserves inventory and creates the Razorpay order.
  */
 export async function openRazorpayCheckout({
-  order,
-  customerName,
-  customerEmail,
-  customerPhone,
-  onSuccess,
-  onFailure,
+  order, customerName, customerEmail, customerPhone, onSuccess, onFailure,
 }: RazorpayOptions): Promise<void> {
   try {
-    const orderRes = await fetch('/api/razorpay/create-order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: order.total,
-        currency: 'INR',
-        receipt: order.id,
-        notes: { orderId: order.id },
-      }),
-    });
-
-    const orderData = await orderRes.json().catch(() => ({}));
-    if (!orderRes.ok || !orderData.id || !orderData.keyId || !Number.isFinite(Number(orderData.amount))) {
-      throw new Error(orderData.error || 'The payment server could not create a valid Razorpay order.');
-    }
-
     if (typeof window === 'undefined' || !window.Razorpay) {
       throw new Error('Razorpay Checkout is unavailable. Please refresh and try again.');
     }
 
+    const created = await authenticatedPost('/api/orders', {
+      items: order.items.map((item) => ({
+        productId: item.productId,
+        size: item.size,
+        color: item.color,
+        quantity: item.quantity,
+      })),
+      shippingAddress: order.shippingAddress,
+      paymentMethod: 'razorpay',
+      customerName,
+    });
+
+    const serverOrder = created.order as CustomerOrder;
+    const gatewayOrder = created.razorpay;
+    if (!serverOrder?.id || !gatewayOrder?.id || !gatewayOrder?.keyId || !Number.isSafeInteger(gatewayOrder.amount)) {
+      throw new Error('The payment server returned an invalid order.');
+    }
+
     const options: any = {
-      key: orderData.keyId,
-      order_id: orderData.id,
-      amount: orderData.amount,
-      currency: orderData.currency || 'INR',
+      key: gatewayOrder.keyId,
+      order_id: gatewayOrder.id,
+      amount: gatewayOrder.amount,
+      currency: gatewayOrder.currency || 'INR',
       name: 'SNAPSTER APPAREL CO.',
-      description: `Order #${order.id}`,
+      description: `Order #${serverOrder.id}`,
       prefill: {
         name: customerName,
         email: customerEmail || '',
         contact: customerPhone?.replace(/\D/g, '').slice(-10) || '',
       },
-      notes: { orderId: order.id },
+      notes: { snapsterOrderId: serverOrder.id },
       theme: { color: '#4A0718' },
       handler: async (response: any) => {
         try {
-          const verifyRes = await fetch('/api/razorpay/verify-payment', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            }),
+          const verified = await authenticatedPost('/api/razorpay/verify-payment', {
+            orderId: serverOrder.id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature,
           });
-
-          const verifyData = await verifyRes.json().catch(() => ({}));
-          if (!verifyRes.ok || verifyData.verified !== true) {
-            onFailure(verifyData.error || 'Payment could not be verified by the server.');
-            return;
+          if (verified.verified !== true || !verified.order || verified.order.paymentStatus !== 'Paid') {
+            throw new Error('The server has not confirmed this payment as captured.');
           }
-
           onSuccess({
             paymentId: response.razorpay_payment_id,
             orderId: response.razorpay_order_id,
             signature: response.razorpay_signature,
             method: 'Razorpay',
+            order: verified.order as CustomerOrder,
           });
         } catch (error: any) {
-          onFailure(error?.message || 'Unable to verify payment with the server. Do not retry payment until its status is checked.');
+          onFailure(error?.message || 'Payment status could not be confirmed. Contact support before retrying.');
         }
       },
-      modal: {
-        ondismiss: () => onFailure('Payment was cancelled by user.'),
-      },
+      modal: { ondismiss: () => onFailure('Payment window closed. Check your order status before retrying.') },
     };
 
-    const rzp = new window.Razorpay(options);
-    rzp.on('payment.failed', (res: any) => {
-      onFailure(res.error?.description || 'Payment transaction failed or was declined.');
+    const checkout = new window.Razorpay(options);
+    checkout.on('payment.failed', (event: any) => {
+      onFailure(event?.error?.description || 'Payment failed. Any reserved stock will be reviewed.');
     });
-    rzp.open();
+    checkout.open();
   } catch (error: any) {
-    onFailure(error?.message || 'Payment processing failed.');
+    onFailure(error?.message || 'Secure checkout could not be started.');
   }
 }
