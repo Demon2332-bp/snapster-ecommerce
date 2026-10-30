@@ -147,8 +147,9 @@ export const CheckoutModal: React.FC = () => {
 
     // Razorpay Integration
     setIsProcessing(true);
-    openRazorpayCheckout({
-      order: pendingOrder,
+    await openRazorpayCheckout({
+      items: pendingOrder.items,
+      shippingAddress: pendingOrder.shippingAddress,
       customerName: formData.fullName,
       customerEmail: formData.email,
       customerPhone: formData.phone,
