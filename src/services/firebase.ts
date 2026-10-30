@@ -121,7 +121,7 @@ export async function signInWithGoogleService(): Promise<AuthUser | null> {
       profile.id = fbUser.uid;
     } else {
       // Determine if admin by email
-      const isAdminEmail = fbUser.email === 'admin@snapster.in' || fbUser.email?.includes('admin');
+      const isAdminEmail = fbUser.emailVerified && ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase());
       profile = {
         id: fbUser.uid,
         name: fbUser.displayName || 'SNAPSTER VIP Member',
@@ -170,7 +170,7 @@ export async function signInWithEmailService(email: string, pass: string): Promi
     return profile;
   }
   
-  const isAdminEmail = email.toLowerCase() === 'admin@snapster.in';
+  const isAdminEmail = fbUser.emailVerified && ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase());
   const profile: AuthUser = {
     id: fbUser.uid,
     name: fbUser.displayName || (isAdminEmail ? 'Master Admin' : 'Customer'),
