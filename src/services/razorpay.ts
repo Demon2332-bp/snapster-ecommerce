@@ -37,7 +37,8 @@ export async function createSecureOrder(input: SecureOrderInput): Promise<Custom
 }
 
 export interface RazorpayOptions {
-  order: CustomerOrder;
+  items: CustomerOrder['items'];
+  shippingAddress: CustomerOrder['shippingAddress'];
   customerName: string;
   customerEmail?: string;
   customerPhone?: string;
@@ -51,7 +52,7 @@ export interface RazorpayOptions {
  * prices, reserves inventory and creates the Razorpay order.
  */
 export async function openRazorpayCheckout({
-  order, customerName, customerEmail, customerPhone, promoCode, onSuccess, onFailure,
+  items, shippingAddress, customerName, customerEmail, customerPhone, promoCode, onSuccess, onFailure,
 }: RazorpayOptions): Promise<void> {
   try {
     if (typeof window === 'undefined' || !window.Razorpay) {
@@ -59,13 +60,13 @@ export async function openRazorpayCheckout({
     }
 
     const created = await authenticatedPost('/api/orders', {
-      items: order.items.map((item) => ({
+      items: items.map((item) => ({
         productId: item.productId,
         size: item.size,
         color: item.color,
         quantity: item.quantity,
       })),
-      shippingAddress: order.shippingAddress,
+      shippingAddress,
       paymentMethod: 'razorpay',
       customerName,
       promoCode: promoCode || undefined,
