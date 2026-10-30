@@ -16,7 +16,7 @@ export interface SecureOrderInput {
 async function authenticatedPost(path: string, body: unknown) {
   const user = auth.currentUser;
   if (!user) throw new Error('Please sign in before placing an order.');
-  const token = await user.getIdToken();
+  const token = await user.getIdToken(true);
   const response = await fetch(path, {
     method: 'POST',
     headers: {
