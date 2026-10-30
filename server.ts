@@ -499,13 +499,17 @@ async function releaseReservedStock(orderRef: DocumentReference, failureReason: 
 }
 
 // Configure an external scheduler to call this endpoint every 5 minutes.
-// Pending Razorpay reservations older than 20 minutes are released safely.
+// Only release a stale reservation after Razorpay confirms there is no payment
+// that is captured or still authorized. If the gateway cannot be checked, fail
+// closed and retain stock until the next scheduler run.
 app.post('/api/maintenance/expire-pending-orders', async (req: Request, res: Response) => {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers['x-cron-secret'] !== secret) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
   if (!firebaseAdmin) return res.status(503).json({ error: 'Database unavailable.' });
+  if (!razorpay) return res.status(503).json({ error: 'Razorpay is unavailable; reservations were not released.' });
+
   const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
   const pending = await firebaseAdmin.db.collection('orders')
     .where('paymentStatus', '==', 'Pending')
@@ -513,11 +517,52 @@ app.post('/api/maintenance/expire-pending-orders', async (req: Request, res: Res
     .limit(100)
     .get();
   let released = 0;
+  let captured = 0;
+  let deferred = 0;
+
   for (const docSnap of pending.docs) {
-    await releaseReservedStock(docSnap.ref, 'Payment reservation expired.');
-    released++;
+    try {
+      const order = docSnap.data();
+      const gatewayOrderId = order.razorpayOrderId;
+      if (typeof gatewayOrderId !== 'string' || !gatewayOrderId) {
+        console.error('[Order Expiry] Missing Razorpay order ID; retaining reservation:', docSnap.id);
+        deferred++;
+        continue;
+      }
+
+      const gatewayPayments: any = await razorpay.orders.fetchPayments(gatewayOrderId);
+      if (!Array.isArray(gatewayPayments?.items)) {
+        console.error('[Order Expiry] Unexpected Razorpay payment response; retaining reservation:', docSnap.id);
+        deferred++;
+        continue;
+      }
+
+      const capturedPayment = gatewayPayments.items.find((payment: any) => payment?.status === 'captured');
+      if (capturedPayment) {
+        await markPaymentCaptured(capturedPayment);
+        captured++;
+        continue;
+      }
+
+      // An authorized payment may still be captured asynchronously. Keep the
+      // reservation until a later run sees it captured or no longer authorized.
+      if (gatewayPayments.items.some((payment: any) => payment?.status === 'authorized')) {
+        deferred++;
+        continue;
+      }
+
+      // Failed attempts cannot become captured. releaseReservedStock rechecks
+      // Pending inside a Firestore transaction, protecting concurrent webhooks.
+      await releaseReservedStock(docSnap.ref, 'Payment reservation expired.');
+      released++;
+    } catch (error) {
+      // Gateway/network errors and unexpected payment data must never release
+      // inventory: retry on the next scheduled run instead.
+      console.error('[Order Expiry] Could not safely expire reservation; retaining it:', docSnap.id, error);
+      deferred++;
+    }
   }
-  return res.json({ checked: pending.size, released });
+  return res.json({ checked: pending.size, released, captured, deferred });
 });
 
 app.post('/api/razorpay/webhook', async (req: Request, res: Response) => {
