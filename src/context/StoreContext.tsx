@@ -543,78 +543,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Auth Operations
-  const loginCustomer = (phone: string, otp: string, name?: string) => {
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      showToast('Please enter a valid 10-digit mobile number', 'error');
-      return { success: false, message: 'Invalid 10-digit number' };
-    }
-    if (!otp || otp.length < 4) {
-      showToast('Please enter the 4-digit OTP received', 'error');
-      return { success: false, message: 'Invalid OTP' };
-    }
-
-    const trimmedName = name && name.trim().length > 0 ? name.trim() : `Member ${cleanPhone.slice(-4)}`;
-
-    const newUser: AuthUser = {
-      role: 'customer',
-      name: trimmedName,
-      phone: `+91 ${cleanPhone.slice(-10)}`,
-      gender: 'Male',
-      addresses: [
-        {
-          id: 'addr-default',
-          fullName: trimmedName,
-          phone: `+91 ${cleanPhone.slice(-10)}`,
-          street: 'MG Road, Labbipet',
-          city: 'Vijayawada',
-          state: 'Andhra Pradesh',
-          pincode: '520010',
-          isDefault: true,
-        },
-      ],
-      loggedInAt: new Date().toISOString(),
-    };
-
-    setUser(newUser);
-    showToast(`Welcome, ${trimmedName}! Access granted to your drip.`, 'success');
-    setIsAuthModalOpen(false);
-
-    // If an action was pending prior to login (Cart, Wishlist, Track Order), open it automatically
-    if (pendingAction === 'cart') {
-      setIsCartOpen(true);
-    } else if (pendingAction === 'wishlist') {
-      setIsWishlistOpen(true);
-    } else if (pendingAction === 'track_order') {
-      setIsOrderTrackingOpen(true);
-    }
-    setPendingAction(null);
-
-    return { success: true, message: 'Logged in successfully' };
+  // Legacy OTP UI is deliberately fail-closed until Firebase Phone Auth is wired.
+  // Never create a client-only identity from a typed phone number and OTP string.
+  const loginCustomer = (_phone: string, _otp: string, _name?: string) => {
+    const message = 'Phone OTP sign-in is not enabled yet. Please use Google or email/password sign-in.';
+    showToast(message, 'error');
+    return { success: false, message };
   };
 
-  const loginAdmin = (username: string, pass: string) => {
-    const cleanUser = username.trim().toLowerCase();
-    const cleanPass = pass.trim();
-    if (
-      (cleanUser === 'admin' || cleanUser === 'snapster_admin') &&
-      (cleanPass === 'snapster2026' || cleanPass === 'admin123')
-    ) {
-      const adminUser: AuthUser = {
-        role: 'admin',
-        name: 'SNAPSTER Operations Admin',
-        email: 'admin@snapster.store',
-        phone: '+91 866 248 9000',
-        loggedInAt: new Date().toISOString(),
-      };
-      setUser(adminUser);
-      showToast('Admin access unlocked // Catalog privileges granted', 'success');
-      setIsAuthModalOpen(false);
-      setIsAdminManagerOpen(true);
-      return { success: true, message: 'Logged in as Admin' };
-    }
-    showToast('Invalid admin credentials. Please re-check username and password.', 'error');
-    return { success: false, message: 'Invalid admin credentials. Use admin / snapster2026' };
+  // Admin sessions must be established through Firebase Authentication.
+  // Hard-coded usernames/passwords in browser code are never accepted.
+  const loginAdmin = (_username: string, _pass: string) => {
+    const message = 'Admin access requires the approved, verified administrator Google/email account.';
+    showToast(message, 'error');
+    return { success: false, message };
   };
 
   const updateUserProfile = async (updates: Partial<AuthUser>): Promise<{ success: boolean; message: string }> => {
