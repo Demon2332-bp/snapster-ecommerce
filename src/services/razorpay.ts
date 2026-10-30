@@ -49,7 +49,7 @@ export interface RazorpayOptions {
  * prices, reserves inventory and creates the Razorpay order.
  */
 export async function openRazorpayCheckout({
-  order, customerName, customerEmail, customerPhone, onSuccess, onFailure,
+  order, customerName, customerEmail, customerPhone, promoCode, onSuccess, onFailure,
 }: RazorpayOptions): Promise<void> {
   try {
     if (typeof window === 'undefined' || !window.Razorpay) {
