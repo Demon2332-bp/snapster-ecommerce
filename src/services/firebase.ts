@@ -117,8 +117,7 @@ export async function signInWithGoogleService(): Promise<AuthUser | null> {
     
     let profile: AuthUser;
     if (userDoc.exists()) {
-      profile = userDoc.data() as AuthUser;
-      profile.id = fbUser.uid;
+      profile = { ...userDoc.data(), id: fbUser.uid, role: (fbUser.emailVerified && ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase())) ? 'admin' : 'customer' } as AuthUser;
     } else {
       // Determine if admin by email
       const isAdminEmail = fbUser.emailVerified && ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase());
@@ -165,8 +164,7 @@ export async function signInWithEmailService(email: string, pass: string): Promi
   const userDocRef = doc(db, 'users', fbUser.uid);
   const userDoc = await getDoc(userDocRef);
   if (userDoc.exists()) {
-    const profile = userDoc.data() as AuthUser;
-    profile.id = fbUser.uid;
+    const profile = { ...userDoc.data(), id: fbUser.uid, role: (fbUser.emailVerified && ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase())) ? 'admin' : 'customer' } as AuthUser;
     return profile;
   }
   
@@ -197,7 +195,7 @@ export async function signUpWithEmailService(
   const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
   const fbUser = cred.user;
   
-  const isAdminEmail = email.toLowerCase() === 'admin@snapster.in';
+  const isAdminEmail = fbUser.emailVerified && ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase());
   const profile: AuthUser = {
     id: fbUser.uid,
     name: name.trim() || 'SNAPSTER VIP Member',
