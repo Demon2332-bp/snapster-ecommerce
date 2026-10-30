@@ -129,19 +129,6 @@ export async function signInWithGoogleService(): Promise<AuthUser | null> {
         phone: fbUser.phoneNumber || '',
         role: isAdminEmail ? 'admin' : 'customer',
         photoURL: fbUser.photoURL || undefined,
-        gender: 'Male',
-        addresses: [
-          {
-            id: `addr-${Date.now()}`,
-            fullName: fbUser.displayName || 'Customer',
-            phone: fbUser.phoneNumber || '+91 9876543210',
-            street: 'MG Road, Labbipet',
-            city: 'Vijayawada',
-            state: 'Andhra Pradesh',
-            pincode: '520010',
-            isDefault: true,
-          },
-        ],
         loggedInAt: new Date().toISOString(),
       };
       await setDoc(userDocRef, {
@@ -175,7 +162,6 @@ export async function signInWithEmailService(email: string, pass: string): Promi
     name: fbUser.displayName || (isAdminEmail ? 'Master Admin' : 'Customer'),
     email: email.trim(),
     role: isAdminEmail ? 'admin' : 'customer',
-    gender: 'Male',
     loggedInAt: new Date().toISOString(),
   };
   await setDoc(userDocRef, {
@@ -204,19 +190,6 @@ export async function signUpWithEmailService(
     email: email.trim(),
     phone: phone ? (phone.startsWith('+91') ? phone : `+91 ${phone.replace(/\D/g, '')}`) : '',
     role: isAdminEmail ? 'admin' : 'customer',
-    gender: 'Male',
-    addresses: [
-      {
-        id: `addr-${Date.now()}`,
-        fullName: name.trim() || 'VIP Member',
-        phone: phone || '+91 9876543210',
-        street: 'MG Road, Labbipet',
-        city: 'Vijayawada',
-        state: 'Andhra Pradesh',
-        pincode: '520010',
-        isDefault: true,
-      },
-    ],
     loggedInAt: new Date().toISOString(),
   };
   
