@@ -186,7 +186,15 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
       quantity: item.quantity,
     });
   }
-  const mergedItems = new Map<string, { productId: string; size: string; color: string; quantity: number }>();\n  for (const item of requestedItems) {\n    const key = [item.productId, item.size, item.color].join('::');\n    const current = mergedItems.get(key);\n    if (current) current.quantity += item.quantity; else mergedItems.set(key, { ...item });\n  }\n  const normalized = [...mergedItems.values()];\n  if (normalized.some((item) => item.quantity > 10)) return res.status(400).json({ error: 'Maximum quantity per product variant is 10.' });\n  if (paymentMethod === 'cod' && normalized.reduce((sum, item) => sum + item.quantity, 0) > 10) {
+  const mergedItems = new Map<string, { productId: string; size: string; color: string; quantity: number }>();
+  for (const item of requestedItems) {
+    const key = [item.productId, item.size, item.color].join('::');
+    const current = mergedItems.get(key);
+    if (current) current.quantity += item.quantity;
+    else mergedItems.set(key, { ...item });
+  }
+  const normalized = [...mergedItems.values()];
+  if (normalized.some((item) => item.quantity > 10)) return res.status(400).json({ error: 'Maximum quantity per product variant is 10.' });\n  if (paymentMethod === 'cod' && normalized.reduce((sum, item) => sum + item.quantity, 0) > 10) {
     return res.status(400).json({ error: 'Cash on Delivery is limited to 10 items per order.' });
   }
 
@@ -226,8 +234,18 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
       });
 
       const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-      const shipping = subtotal >= 2499 ? 0 : 99;
-      const total = subtotal + shipping;
+      const promoCode = typeof req.body?.promoCode === 'string' ? req.body.promoCode.trim().toUpperCase() : '';
+      const discount = promoCode === 'EDGE20'
+        ? Math.round(subtotal * 0.2)
+        : (promoCode === 'EDGE10' || promoCode === 'SNAP10')
+          ? Math.round(subtotal * 0.1)
+          : 0;
+      const freeShippingPromo = promoCode === 'FREESHIP';
+      if (promoCode && !['EDGE20', 'EDGE10', 'SNAP10', 'FREESHIP'].includes(promoCode)) {
+        throw new Error('This promo code is invalid.');
+      }
+      const shipping = subtotal - discount >= 2499 || freeShippingPromo ? 0 : 149;
+      const total = subtotal - discount + shipping;
       if (!Number.isSafeInteger(Math.round(total * 100)) || total <= 0) throw new Error('Order total is invalid.');
       if (paymentMethod === 'cod' && total > 50000) throw new Error('Cash on Delivery is unavailable for orders above ₹50,000.');
 
