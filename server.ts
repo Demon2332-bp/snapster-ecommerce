@@ -447,7 +447,7 @@ app.post('/api/razorpay/verify-payment', requireUser, async (req: Request, res: 
     }
 
     const payment: any = await razorpay.payments.fetch(razorpay_payment_id);
-    const result = await markPaymentCaptured(payment);
+    const result = await markPaymentCaptured(payment) as Record<string, any>;
     if (result.userId !== (req as RequestWithRawBody).user!.uid) {
       return res.status(403).json({ verified: false, error: 'Payment owner mismatch.' });
     }
