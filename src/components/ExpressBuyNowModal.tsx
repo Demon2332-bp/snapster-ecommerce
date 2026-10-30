@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, CheckCircle2, ShieldCheck, Truck, CreditCard, Smartphone, Banknote, ArrowRight, Loader2, MapPin, Sparkles, Tag, Landmark, QrCode } from 'lucide-react';
 import { useStore, BuyNowData } from '../context/StoreContext';
-import { openRazorpayCheckout } from '../services/razorpay';
+import { openRazorpayCheckout, createSecureOrder } from '../services/razorpay';
 import { CustomerOrder } from '../types/store';
 
 export const ExpressBuyNowModal: React.FC = () => {
@@ -11,7 +11,6 @@ export const ExpressBuyNowModal: React.FC = () => {
     formatPrice,
     getExpectedDeliveryDate,
     showToast,
-    addOrder,
     user,
   } = useStore();
 
@@ -61,7 +60,7 @@ export const ExpressBuyNowModal: React.FC = () => {
   const totalSavings = totalOriginal - totalPayable;
   const deliveryDate = getExpectedDeliveryDate(pincode);
 
-  const handlePlaceOrder = (e: React.FormEvent) => {
+  const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     const orderId = `SNP-${Math.floor(100000 + Math.random() * 900000)}`;
 
@@ -104,15 +103,22 @@ export const ExpressBuyNowModal: React.FC = () => {
 
     if (paymentMethod === 'cod') {
       setIsProcessing(true);
-      setTimeout(() => {
-        setIsProcessing(false);
-        setOrderConfirmed({
-          orderId,
-          deliveryDate,
+      try {
+        const created = await createSecureOrder({
+          items: pendingOrder.items.map((item) => ({
+            productId: item.productId, size: item.size, color: item.color, quantity: item.quantity,
+          })),
+          shippingAddress: pendingOrder.shippingAddress,
+          paymentMethod: 'cod',
+          customerName: address.name,
         });
-        addOrder(pendingOrder);
-        showToast(`Instant Order ${orderId} Confirmed via COD! Expected delivery: ${deliveryDate}`, 'success');
-      }, 700);
+        setIsProcessing(false);
+        setOrderConfirmed({ orderId: created.id, deliveryDate });
+        showToast(`Order ${created.id} placed successfully. Payment is due on delivery.`, 'success');
+      } catch (error: any) {
+        setIsProcessing(false);
+        showToast(error?.message || 'Could not place your order. Please sign in and try again.', 'error');
+      }
       return;
     }
 
@@ -123,7 +129,7 @@ export const ExpressBuyNowModal: React.FC = () => {
       customerName: address.name,
       customerEmail: user?.email || 'customer@snapster.in',
       customerPhone: address.phone,
-      onSuccess: ({ paymentId, orderId: rzpOrderId, signature, method }) => {
+      onSuccess: ({ paymentId, orderId: rzpOrderId, signature, method, order: confirmedOrder }) => {
         pendingOrder.paymentStatus = 'Paid';
         pendingOrder.paymentId = paymentId;
         pendingOrder.razorpayOrderId = rzpOrderId;
@@ -131,12 +137,11 @@ export const ExpressBuyNowModal: React.FC = () => {
         if (method) pendingOrder.paymentMethod = method;
         setIsProcessing(false);
         setOrderConfirmed({
-          orderId,
+          orderId: confirmedOrder.id,
           deliveryDate,
           paymentId,
         });
-        addOrder(pendingOrder);
-        showToast(`Payment Confirmed (${paymentId})! Order ${orderId} placed permanently in Firestore.`, 'success');
+        showToast(`Payment captured and order ${confirmedOrder.id} confirmed by the server.`, 'success');
       },
       onFailure: (errMsg) => {
         setIsProcessing(false);
