@@ -20,7 +20,7 @@ Copy `.env.example` to `.env` on the server. Never commit the real `.env` file.
 2. Set `FIREBASE_DATABASE_ID` to the Firestore database ID used by this application.
 3. Add Razorpay API credentials and webhook secret from the Razorpay Dashboard. Start with test keys.
 4. Set a long random `CRON_SECRET`.
-5. Deploy to a Node.js 20+ environment and run `npm start` with `NODE_ENV=production`.
+5. Deploy to a Node.js 24.12.0 or newer environment and run `npm start` with `NODE_ENV=production`.
 
 If Firebase Admin credentials are missing, secure checkout intentionally returns 503; it never falls back to client-side order writes.
 
