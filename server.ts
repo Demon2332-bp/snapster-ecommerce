@@ -15,6 +15,18 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+
+// Baseline browser security headers. CSP is intentionally configured at the
+// hosting layer because the storefront uses third-party image/font providers.
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  next();
+});
 const PORT = Number(process.env.PORT || 3000);
 const isProd = process.env.NODE_ENV === 'production';
 const ADMIN_EMAILS = new Set(['santhirajugonnabattula@gmail.com', 'admin@snapster.in']);
