@@ -964,10 +964,7 @@ export const AuthModal: React.FC = () => {
                                         type="button"
                                         disabled={phoneOtpCountdown > 0}
                                         onClick={() => {
-                                          const code = Math.floor(1000 + Math.random() * 9000).toString();
-                                          setPhoneOtpCode(code);
-                                          setPhoneOtpCountdown(30);
-                                          showToast(`New OTP sent: ${code}`, 'info');
+                                          showToast('Phone verification is not configured. This number cannot be marked as verified.', 'error');
                                         }}
                                         className="text-amber-400 hover:text-amber-300 disabled:opacity-50 cursor-pointer underline"
                                       >
@@ -1900,7 +1897,7 @@ export const AuthModal: React.FC = () => {
                           setAdminPassword(e.target.value);
                           setAdminError(null);
                         }}
-                        placeholder="e.g. snapster2026"
+                        placeholder="Your Firebase password"
                         className="w-full bg-white/5 border border-white/15 px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-400"
                         required
                       />
