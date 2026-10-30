@@ -202,21 +202,29 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
   const { db } = firebaseAdmin;
   const orderRef = db.collection('orders').doc();
   const publicOrderId = orderRef.id;
-  const productRefs = normalized.map((item) => db.collection('products').doc(item.productId));
+  const productIds = [...new Set(normalized.map((item) => item.productId))];
+  const productRefs = productIds.map((productId) => db.collection('products').doc(productId));
+  const requestedTotals = new Map<string, number>();
+  for (const item of normalized) requestedTotals.set(item.productId, (requestedTotals.get(item.productId) || 0) + item.quantity);
   let orderData: any;
 
   try {
     await db.runTransaction(async (tx) => {
       const snapshots = await Promise.all(productRefs.map((ref) => tx.get(ref)));
-      const items: PricedItem[] = snapshots.map((snap, index) => {
-        const requestedItem = normalized[index];
+      const productById = new Map(snapshots.map((snap) => [snap.id, snap]));
+      for (const snap of snapshots) {
         if (!snap.exists) throw new Error('A product in your cart is no longer available.');
         const product = snap.data()!;
-        const price = Number(product.price);
         const stock = Number(product.stock);
-        if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(stock) || stock < requestedItem.quantity) {
+        const price = Number(product.price);
+        const requestedQuantity = requestedTotals.get(snap.id) || 0;
+        if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(stock) || stock < requestedQuantity) {
           throw new Error('Insufficient stock or invalid product price for ' + String(product.name || 'a product') + '.');
         }
+      }
+      const items: PricedItem[] = normalized.map((requestedItem) => {
+        const snap = productById.get(requestedItem.productId)!;
+        const product = snap.data()!;
         const sizes = Array.isArray(product.sizes) ? product.sizes : [];
         const colors = Array.isArray(product.colors) ? product.colors : [];
         if (!sizes.includes(requestedItem.size) ||
@@ -226,7 +234,7 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
         return {
           productId: snap.id,
           name: String(product.name || 'SNAPSTER Product'),
-          price,
+          price: Number(product.price),
           image: typeof product.image === 'string' ? product.image : '',
           size: requestedItem.size,
           color: requestedItem.color,
@@ -252,7 +260,11 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
 
       // All product reads happen before writes, so stock changes are atomic.
       for (let i = 0; i < productRefs.length; i++) {
-        tx.update(productRefs[i], { stock: Number(snapshots[i].data()!.stock) - normalized[i].quantity, updatedAt: new Date().toISOString() });
+        const productId = productIds[i];
+        tx.update(productRefs[i], {
+          stock: Number(snapshots[i].data()!.stock) - (requestedTotals.get(productId) || 0),
+          updatedAt: new Date().toISOString(),
+        });
       }
 
       const userRecord = await firebaseAdmin!.auth.getUser((req as RequestWithRawBody).user!.uid);
@@ -308,9 +320,15 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
       await db.runTransaction(async (tx) => {
         const current = await tx.get(orderRef);
         if (!current.exists || current.data()?.paymentStatus !== 'Pending') return;
+        const productSnaps = await Promise.all(productRefs.map((ref) => tx.get(ref)));
         for (let i = 0; i < productRefs.length; i++) {
-          const productSnap = await tx.get(productRefs[i]);
-          if (productSnap.exists) tx.update(productRefs[i], { stock: Number(productSnap.data()!.stock) + normalized[i].quantity });
+          if (productSnaps[i].exists) {
+            const productId = productIds[i];
+            tx.update(productRefs[i], {
+              stock: Number(productSnaps[i].data()!.stock) + (requestedTotals.get(productId) || 0),
+              updatedAt: new Date().toISOString(),
+            });
+          }
         }
         tx.delete(orderRef);
       });
