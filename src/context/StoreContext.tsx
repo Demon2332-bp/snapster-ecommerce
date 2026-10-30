@@ -555,12 +555,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: false, message };
   };
 
-  // Admin sessions must be established through Firebase Authentication.
-  // Hard-coded usernames/passwords in browser code are never accepted.
-  const loginAdmin = (_username: string, _pass: string) => {
-    const message = 'Admin access requires the approved, verified administrator Google/email account.';
-    showToast(message, 'error');
-    return { success: false, message };
+  // Admin sign-in uses Firebase email/password. The role is assigned only
+  // by the authentication service for a verified allowlisted email address.
+  const loginAdmin = async (email: string, password: string) => {
+    try {
+      const profile = await signInWithEmailService(email, password);
+      if (profile.role !== 'admin') {
+        await signOutService();
+        throw new Error('This verified account is not on the SNAPSTER administrator allowlist.');
+      }
+      setUser(profile);
+      showToast('Administrator authenticated securely.', 'success');
+      setIsAuthModalOpen(false);
+      setIsAdminManagerOpen(true);
+      return { success: true, message: 'Administrator authenticated.' };
+    } catch (error: any) {
+      const message = error?.message || 'Administrator sign-in failed.';
+      showToast(message, 'error');
+      return { success: false, message };
+    }
   };
 
   const updateUserProfile = async (updates: Partial<AuthUser>): Promise<{ success: boolean; message: string }> => {
