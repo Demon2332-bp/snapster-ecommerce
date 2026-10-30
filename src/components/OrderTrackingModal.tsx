@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Search, Package, Truck, CheckCircle2, MapPin, Clock, ArrowRight, ShieldCheck, Download, Printer } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { CustomerOrder } from '../types/store';
+import { TaxInvoiceModal } from './TaxInvoiceModal';
 
 export const OrderTrackingModal: React.FC = () => {
   const {
@@ -16,6 +17,7 @@ export const OrderTrackingModal: React.FC = () => {
 
   const [orderInput, setOrderInput] = useState('');
   const [activeOrder, setActiveOrder] = useState<CustomerOrder | null>(null);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 
   // Sync active order when modal opens or trackingOrderId changes
   useEffect(() => {
@@ -134,7 +136,7 @@ export const OrderTrackingModal: React.FC = () => {
   ];
 
   const handlePrintInvoice = () => {
-    window.print();
+    setIsInvoiceModalOpen(true);
   };
 
   return (
@@ -339,6 +341,13 @@ export const OrderTrackingModal: React.FC = () => {
 
         </div>
       </div>
+
+      {/* Official GST Tax Invoice Dialog */}
+      <TaxInvoiceModal
+        order={activeOrder}
+        isOpen={isInvoiceModalOpen}
+        onClose={() => setIsInvoiceModalOpen(false)}
+      />
     </div>
   );
 };

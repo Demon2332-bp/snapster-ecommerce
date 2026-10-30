@@ -63,10 +63,17 @@ service cloud.firestore {
       }
     }
 
-    // Products catalog: Public read, Admin write
+    // Products catalog: Public read, Admin write, or atomic stock decrement upon purchase
     match /products/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'updatedAt']) &&
+        request.resource.data.stock is number &&
+        request.resource.data.stock >= 0 &&
+        request.resource.data.stock <= resource.data.stock
+      ) || isAdmin();
     }
 
     // Orders: Private per user. Customers only read their own orders; Admins can view all & update statuses.

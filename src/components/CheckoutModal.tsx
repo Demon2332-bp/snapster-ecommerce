@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle2, ShieldCheck, Truck, CreditCard, Smartphone, Banknote, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import { X, CheckCircle2, ShieldCheck, Truck, CreditCard, Smartphone, Banknote, ArrowRight, Loader2, Sparkles, Printer, Package } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { openRazorpayCheckout } from '../services/razorpay';
 import { CustomerOrder } from '../types/store';
+import { TaxInvoiceModal } from './TaxInvoiceModal';
 
 export const CheckoutModal: React.FC = () => {
   const {
@@ -19,12 +20,16 @@ export const CheckoutModal: React.FC = () => {
     addOrder,
     getExpectedDeliveryDate,
     user,
+    setIsOrderTrackingOpen,
+    setTrackingOrderId,
   } = useStore();
 
   const [step, setStep] = useState<'details' | 'success'>('details');
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [paidPaymentId, setPaidPaymentId] = useState<string | null>(null);
+  const [lastPlacedOrder, setLastPlacedOrder] = useState<CustomerOrder | null>(null);
+  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -124,6 +129,7 @@ export const CheckoutModal: React.FC = () => {
       setIsProcessing(true);
       setTimeout(() => {
         addOrder(pendingOrder);
+        setLastPlacedOrder(pendingOrder);
         setOrderNumber(generatedOrderNum);
         setPaidPaymentId(null);
         setIsProcessing(false);
@@ -148,6 +154,7 @@ export const CheckoutModal: React.FC = () => {
         pendingOrder.razorpaySignature = signature;
         if (method) pendingOrder.paymentMethod = method;
         addOrder(pendingOrder);
+        setLastPlacedOrder(pendingOrder);
         setOrderNumber(generatedOrderNum);
         setPaidPaymentId(paymentId);
         setIsProcessing(false);
@@ -248,13 +255,35 @@ export const CheckoutModal: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-4">
+              <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={() => setIsInvoiceOpen(true)}
+                  className="px-5 py-3 bg-[#4A0718] text-white hover:bg-[#630920] font-mono font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-colors cursor-pointer border border-white/10"
+                >
+                  <Printer size={14} />
+                  <span>VIEW / PRINT GST INVOICE</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (lastPlacedOrder) {
+                      setTrackingOrderId(lastPlacedOrder.id);
+                      setIsCheckoutOpen(false);
+                      setIsOrderTrackingOpen(true);
+                    }
+                  }}
+                  className="px-5 py-3 bg-white/10 text-white hover:bg-white/20 font-mono font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-colors cursor-pointer border border-white/20"
+                >
+                  <Package size={14} />
+                  <span>TRACK SHIPMENT</span>
+                </button>
+
                 <button
                   onClick={() => {
                     setIsCheckoutOpen(false);
                     setStep('details');
                   }}
-                  className="px-8 py-3.5 bg-white text-[#111011] hover:bg-[#F6F1E9] font-black text-xs uppercase tracking-widest transition-colors cursor-pointer shadow-xl"
+                  className="px-6 py-3 bg-white text-[#111011] hover:bg-[#F6F1E9] font-black text-xs uppercase tracking-widest transition-colors cursor-pointer shadow-xl"
                 >
                   RETURN TO STORE
                 </button>
@@ -479,6 +508,13 @@ export const CheckoutModal: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* GST Tax Invoice Modal */}
+      <TaxInvoiceModal
+        order={lastPlacedOrder}
+        isOpen={isInvoiceOpen}
+        onClose={() => setIsInvoiceOpen(false)}
+      />
     </div>
   );
 };

@@ -427,7 +427,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     setOrders((prev) => [order, ...prev]);
     setTrackingOrderId(order.id);
-    saveOrderService(order).catch(console.warn);
+    saveOrderService(order)
+      .then((res) => {
+        if (res && res.stockDeltas && Object.keys(res.stockDeltas).length > 0) {
+          setProducts((prev) =>
+            prev.map((p) => {
+              if (res.stockDeltas && res.stockDeltas[p.id] !== undefined) {
+                return { ...p, stock: res.stockDeltas[p.id] };
+              }
+              return p;
+            })
+          );
+        }
+      })
+      .catch(console.warn);
     if (user?.id) {
       addNotificationService(user.id, {
         title: `Order Placed (#${order.id})`,

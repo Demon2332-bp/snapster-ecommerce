@@ -124,14 +124,11 @@ export async function openRazorpayCheckout({
               onFailure(verifyData.error || 'Payment signature verification failed on server.');
             }
           } catch (vErr: any) {
-            console.error('[Razorpay] Verification endpoint error:', vErr);
-            // If offline, still preserve the verified payment ID from client
-            onSuccess({
-              paymentId: response.razorpay_payment_id,
-              orderId: response.razorpay_order_id,
-              signature: response.razorpay_signature,
-              method: 'Razorpay UPI/Cards',
-            });
+            console.error('[Razorpay] Verification endpoint network error:', vErr);
+            onFailure(
+              vErr?.message ||
+                'Could not reach verification server. Payment cannot be marked as verified without cryptographic confirmation.'
+            );
           }
         },
         modal: {
