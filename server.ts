@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import Razorpay from 'razorpay';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';\nimport type { DocumentReference } from 'firebase-admin/firestore';
 
 dotenv.config();
 
@@ -342,7 +342,7 @@ app.post('/api/razorpay/verify-payment', requireUser, async (req: Request, res: 
   }
 });
 
-async function releaseReservedStock(orderRef: FirebaseFirestore.DocumentReference, failureReason: string) {
+async function releaseReservedStock(orderRef: DocumentReference, failureReason: string) {
   if (!firebaseAdmin) throw new Error('Firebase Admin is unavailable.');
   const { db } = firebaseAdmin;
   await db.runTransaction(async (tx) => {
