@@ -74,7 +74,7 @@ async function requireUser(req: Request, res: Response, next: NextFunction) {
   if (!match) return res.status(401).json({ error: 'Please sign in before checkout.' });
   try {
     const decoded = await firebaseAdmin.auth.verifyIdToken(match[1], true);
-    if (decoded.email && decoded.email_verified !== true) {
+    if (!decoded.email || decoded.email_verified !== true) {
       return res.status(403).json({ error: 'Please verify your email address before checkout.' });
     }
     (req as RequestWithRawBody).user = {
@@ -368,20 +368,54 @@ app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async 
   }
   try {
     const ref = firebaseAdmin.db.collection('orders').doc(orderId);
-    const snap = await ref.get();
-    if (!snap.exists) return res.status(404).json({ error: 'Order not found.' });
-    const order = snap.data()!;
-    if (order.status === 'Delivered' || order.status === 'Cancelled') {
-      return res.status(409).json({ error: 'This order is already in a final state.' });
-    }
-    if (status === 'Delivered' && order.paymentMethod !== 'Cash on Delivery' &&
-        order.paymentStatus !== 'Paid') {
-      return res.status(409).json({ error: 'An unpaid online order cannot be marked delivered.' });
-    }
-    await ref.update({ status, updatedAt: new Date().toISOString() });
+    await firebaseAdmin.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('ORDER_NOT_FOUND');
+      const order = snap.data()!;
+      if (order.status === 'Delivered' || order.status === 'Cancelled') {
+        throw new Error('ORDER_FINAL_STATE');
+      }
+      if (status === 'Delivered' && order.paymentMethod !== 'Cash on Delivery' &&
+          order.paymentStatus !== 'Paid') {
+        throw new Error('UNPAID_ORDER');
+      }
+
+      // A cancelled COD order has no payment to refund, so release its stock
+      // in the same transaction as the status change. Paid online orders need
+      // a confirmed refund workflow before stock is released.
+      if (status === 'Cancelled' && order.paymentMethod === 'Cash on Delivery') {
+        const items = Array.isArray(order.items) ? order.items : [];
+        const quantities = new Map<string, number>();
+        for (const item of items) {
+          const productId = String(item.productId || '');
+          const quantity = Number(item.quantity);
+          if (productId && Number.isSafeInteger(quantity) && quantity > 0) {
+            quantities.set(productId, (quantities.get(productId) || 0) + quantity);
+          }
+        }
+        const productIds = [...quantities.keys()];
+        const refs = productIds.map((productId) => firebaseAdmin!.db.collection('products').doc(productId));
+        const productSnaps = await Promise.all(refs.map((productRef) => tx.get(productRef)));
+        for (let i = 0; i < refs.length; i++) {
+          if (productSnaps[i].exists) {
+            const stock = Number(productSnaps[i].data()?.stock);
+            if (!Number.isSafeInteger(stock)) throw new Error('INVALID_PRODUCT_STOCK');
+            tx.update(refs[i], {
+              stock: stock + (quantities.get(productIds[i]) || 0),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+      tx.update(ref, { status, updatedAt: new Date().toISOString() });
+    });
     return res.json({ success: true, orderId, status });
   } catch (error) {
     console.error('[Admin] Order status update failed:', error);
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'ORDER_NOT_FOUND') return res.status(404).json({ error: 'Order not found.' });
+    if (message === 'ORDER_FINAL_STATE') return res.status(409).json({ error: 'This order is already in a final state.' });
+    if (message === 'UNPAID_ORDER') return res.status(409).json({ error: 'An unpaid online order cannot be marked delivered.' });
     return res.status(500).json({ error: 'Could not update order status.' });
   }
 });
