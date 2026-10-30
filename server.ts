@@ -531,8 +531,10 @@ app.post('/api/maintenance/expire-pending-orders', async (req: Request, res: Res
       }
 
       const gatewayPayments: any = await razorpay.orders.fetchPayments(gatewayOrderId);
-      if (!Array.isArray(gatewayPayments?.items)) {
-        console.error('[Order Expiry] Unexpected Razorpay payment response; retaining reservation:', docSnap.id);
+      if (!Array.isArray(gatewayPayments?.items) ||
+          !Number.isSafeInteger(gatewayPayments.count) ||
+          gatewayPayments.count !== gatewayPayments.items.length) {
+        console.error('[Order Expiry] Incomplete or unexpected Razorpay payment response; retaining reservation:', docSnap.id);
         deferred++;
         continue;
       }
@@ -544,15 +546,16 @@ app.post('/api/maintenance/expire-pending-orders', async (req: Request, res: Res
         continue;
       }
 
-      // An authorized payment may still be captured asynchronously. Keep the
-      // reservation until a later run sees it captured or no longer authorized.
-      if (gatewayPayments.items.some((payment: any) => payment?.status === 'authorized')) {
+      // Only definitively failed attempts are safe to expire. Created,
+      // authorized, refunded, or unknown states may represent a payment that
+      // needs reconciliation, so retain stock and retry on the next run.
+      if (gatewayPayments.items.some((payment: any) => payment?.status !== 'failed')) {
         deferred++;
         continue;
       }
 
-      // Failed attempts cannot become captured. releaseReservedStock rechecks
-      // Pending inside a Firestore transaction, protecting concurrent webhooks.
+      // releaseReservedStock rechecks Pending inside a Firestore transaction,
+      // protecting against a webhook that commits while this job is running.
       await releaseReservedStock(docSnap.ref, 'Payment reservation expired.');
       released++;
     } catch (error) {
