@@ -10,6 +10,7 @@ export interface SecureOrderInput {
   shippingAddress: CustomerOrder['shippingAddress'];
   paymentMethod: 'cod' | 'razorpay';
   customerName?: string;
+  promoCode?: string | null;
 }
 
 async function authenticatedPost(path: string, body: unknown) {
@@ -40,6 +41,7 @@ export interface RazorpayOptions {
   customerName: string;
   customerEmail?: string;
   customerPhone?: string;
+  promoCode?: string | null;
   onSuccess: (details: { paymentId: string; orderId: string; signature: string; method: string; order: CustomerOrder }) => void;
   onFailure: (message: string) => void;
 }
@@ -66,6 +68,7 @@ export async function openRazorpayCheckout({
       shippingAddress: order.shippingAddress,
       paymentMethod: 'razorpay',
       customerName,
+      promoCode: promoCode || undefined,
     });
 
     const serverOrder = created.order as CustomerOrder;
