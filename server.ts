@@ -207,7 +207,8 @@ app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
     else mergedItems.set(key, { ...item });
   }
   const normalized = [...mergedItems.values()];
-  if (normalized.some((item) => item.quantity > 10)) return res.status(400).json({ error: 'Maximum quantity per product variant is 10.' });\n  if (paymentMethod === 'cod' && normalized.reduce((sum, item) => sum + item.quantity, 0) > 10) {
+  if (normalized.some((item) => item.quantity > 10)) return res.status(400).json({ error: 'Maximum quantity per product variant is 10.' });
+  if (paymentMethod === 'cod' && normalized.reduce((sum, item) => sum + item.quantity, 0) > 10) {
     return res.status(400).json({ error: 'Cash on Delivery is limited to 10 items per order.' });
   }
 
