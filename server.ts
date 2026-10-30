@@ -498,6 +498,16 @@ app.post('/api/razorpay/webhook', async (req: Request, res: Response) => {
   try {
     if (req.body?.event === 'payment.captured') {
       await markPaymentCaptured(req.body.payload?.payment?.entity);
+    } else if (req.body?.event === 'payment.failed') {
+      const failedPayment = req.body.payload?.payment?.entity;
+      const gatewayOrderId = failedPayment?.order_id;
+      if (gatewayOrderId && firebaseAdmin) {
+        const matches = await firebaseAdmin.db.collection('orders')
+          .where('razorpayOrderId', '==', gatewayOrderId).limit(1).get();
+        if (!matches.empty) {
+          await releaseReservedStock(matches.docs[0].ref, 'Razorpay payment failed.');
+        }
+      }
     }
     return res.json({ status: 'ok', received: true });
   } catch (error) {
