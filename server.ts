@@ -1,193 +1,376 @@
 import express from 'express';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import Razorpay from 'razorpay';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
 const isProd = process.env.NODE_ENV === 'production';
+const ADMIN_EMAILS = new Set(['santhirajugonnabattula@gmail.com']);
 
-// Preserve the exact incoming JSON bytes for Razorpay webhook HMAC verification.
-type RequestWithRawBody = Request & { rawBody?: Buffer };
+type RequestWithRawBody = Request & { rawBody?: Buffer; user?: { uid: string; email?: string; email_verified?: boolean } };
+
 app.use(express.json({
+  limit: '256kb',
   verify: (req, _res, buffer) => {
     (req as RequestWithRawBody).rawBody = Buffer.from(buffer);
   },
 }));
-app.use(express.urlencoded({ extended: true }));
-
-// Never read a Razorpay secret from a Vite-prefixed/public environment variable.
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
-
-let razorpayClient: Razorpay | null = null;
-if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
-  razorpayClient = new Razorpay({
-    key_id: RAZORPAY_KEY_ID,
-    key_secret: RAZORPAY_KEY_SECRET,
-  });
-  console.log('[Razorpay] Server SDK initialized.');
-} else {
-  console.error('[Razorpay] Credentials are missing. Online payments are disabled.');
-}
-
-// Temporary process-local replay guard only. Replace with a durable Firestore
-// transaction/unique payment record before running multiple instances.
-const processedPayments = new Set<string>();
+app.use(express.urlencoded({ extended: true, limit: '32kb' }));
 
 function safeHexEqual(actual: string, expected: string): boolean {
   if (!/^[a-f0-9]+$/i.test(actual) || !/^[a-f0-9]+$/i.test(expected)) return false;
-  const actualBuffer = Buffer.from(actual, 'hex');
-  const expectedBuffer = Buffer.from(expected, 'hex');
-  return actualBuffer.length === expectedBuffer.length &&
-    crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+  const a = Buffer.from(actual, 'hex');
+  const b = Buffer.from(expected, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-app.get('/api/razorpay/key', (_req: Request, res: Response) => {
-  if (!razorpayClient || !RAZORPAY_KEY_ID) {
+function loadFirebaseAdmin() {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!raw) {
+    console.error('[Firebase Admin] FIREBASE_SERVICE_ACCOUNT_JSON is missing. Secure order APIs are disabled.');
+    return null;
+  }
+  try {
+    const serviceAccount = JSON.parse(raw);
+    const adminApp = getApps().length ? getApps()[0] : initializeApp({
+      credential: cert(serviceAccount),
+      projectId: serviceAccount.project_id,
+    });
+    const databaseId = process.env.FIREBASE_DATABASE_ID;
+    const db = databaseId && databaseId !== '(default)'
+      ? getFirestore(adminApp, databaseId)
+      : getFirestore(adminApp);
+    return { auth: getAuth(adminApp), db };
+  } catch (error) {
+    console.error('[Firebase Admin] Could not initialize Admin SDK. Check service-account JSON and database ID.', error);
+    return null;
+  }
+}
+
+const firebaseAdmin = loadFirebaseAdmin();
+const keyId = process.env.RAZORPAY_KEY_ID || '';
+const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
+const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+const razorpay = keyId && keySecret
+  ? new Razorpay({ key_id: keyId, key_secret: keySecret })
+  : null;
+
+async function requireUser(req: Request, res: Response, next: NextFunction) {
+  if (!firebaseAdmin) return res.status(503).json({ error: 'Secure checkout is not configured on the server.' });
+  const header = req.headers.authorization || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) return res.status(401).json({ error: 'Please sign in before checkout.' });
+  try {
+    const decoded = await firebaseAdmin.auth.verifyIdToken(match[1], true);
+    (req as RequestWithRawBody).user = {
+      uid: decoded.uid,
+      email: decoded.email,
+      email_verified: decoded.email_verified,
+    };
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Your session has expired. Please sign in again.' });
+  }
+}
+
+function validText(value: unknown, max: number): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
+}
+
+function validateAddress(value: any) {
+  return value && validText(value.fullName, 100) &&
+    validText(value.phone, 20) && /^[0-9+()\-\s]{10,20}$/.test(value.phone) &&
+    validText(value.street, 250) && validText(value.city, 80) &&
+    validText(value.state, 80) && typeof value.pincode === 'string' && /^[0-9]{6}$/.test(value.pincode);
+}
+
+type PricedItem = {
+  productId: string; name: string; price: number; image: string;
+  size: string; color: string; quantity: number;
+};
+
+async function markPaymentCaptured(payment: any) {
+  if (!firebaseAdmin || !payment?.id || !payment?.order_id) throw new Error('Payment data is incomplete.');
+  const { db } = firebaseAdmin;
+  const orderQuery = await db.collection('orders').where('razorpayOrderId', '==', payment.order_id).limit(1).get();
+  if (orderQuery.empty) throw new Error('No SNAPSTER order matches this payment.');
+  const orderRef = orderQuery.docs[0].ref;
+  const paymentRef = db.collection('paymentEvents').doc(String(payment.id));
+
+  await db.runTransaction(async (tx) => {
+    const [orderSnap, paymentSnap] = await Promise.all([tx.get(orderRef), tx.get(paymentRef)]);
+    if (!orderSnap.exists) throw new Error('Order not found.');
+    if (paymentSnap.exists) {
+      if (paymentSnap.data()?.orderId !== orderRef.id) throw new Error('Payment ID is already linked to another order.');
+      return;
+    }
+    const order = orderSnap.data()!;
+    const expectedAmount = Math.round(Number(order.total) * 100);
+    if (payment.status !== 'captured' || payment.currency !== 'INR' ||
+        Number(payment.amount) !== expectedAmount || payment.order_id !== order.razorpayOrderId) {
+      throw new Error('Captured payment amount, currency, or order does not match.');
+    }
+    if (order.paymentStatus === 'Paid') {
+      if (order.paymentId !== payment.id) throw new Error('A different payment is already recorded for this order.');
+      tx.create(paymentRef, { orderId: orderRef.id, paymentId: payment.id, createdAt: FieldValue.serverTimestamp() });
+      return;
+    }
+    if (order.paymentStatus !== 'Pending') throw new Error('Order is not awaiting online payment.');
+    tx.update(orderRef, {
+      paymentStatus: 'Paid',
+      paymentId: payment.id,
+      paymentMethod: 'Razorpay',
+      status: 'Confirmed',
+      updatedAt: new Date().toISOString(),
+    });
+    tx.create(paymentRef, { orderId: orderRef.id, paymentId: payment.id, createdAt: FieldValue.serverTimestamp() });
+  });
+  const finalOrder = await orderRef.get();
+  return { id: finalOrder.id, ...finalOrder.data() };
+}
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    checkoutConfigured: Boolean(firebaseAdmin),
+    onlinePaymentsConfigured: Boolean(firebaseAdmin && razorpay),
+  });
+});
+
+app.get('/api/razorpay/key', (_req, res) => {
+  if (!razorpay) return res.status(503).json({ error: 'Online payments are not configured.' });
+  return res.json({ keyId, isConfigured: true });
+});
+
+// The server recalculates every price and shipping charge from Firestore.
+// Client-submitted totals, discounts, names, images and stock values are ignored.
+app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
+  if (!firebaseAdmin) return res.status(503).json({ error: 'Checkout is unavailable.' });
+  if (!validateAddress(req.body?.shippingAddress)) {
+    return res.status(400).json({ error: 'Please provide a valid delivery address.' });
+  }
+  const paymentMethod = req.body?.paymentMethod;
+  if (paymentMethod !== 'cod' && paymentMethod !== 'razorpay') {
+    return res.status(400).json({ error: 'Unsupported payment method.' });
+  }
+  const requested = req.body?.items;
+  if (!Array.isArray(requested) || requested.length < 1 || requested.length > 20) {
+    return res.status(400).json({ error: 'Your cart is empty or contains too many line items.' });
+  }
+  if (paymentMethod === 'razorpay' && !razorpay) {
     return res.status(503).json({ error: 'Online payments are not configured.' });
   }
-  return res.json({ keyId: RAZORPAY_KEY_ID, isConfigured: true });
-});
 
-app.post('/api/razorpay/create-order', async (req: Request, res: Response) => {
+  const normalized: Array<{ productId: string; size: string; color: string; quantity: number }> = [];
+  for (const item of requested) {
+    if (!validText(item?.productId, 120) || !validText(item?.size, 10) ||
+        !validText(item?.color, 80) || !Number.isSafeInteger(item?.quantity) ||
+        item.quantity < 1 || item.quantity > 10) {
+      return res.status(400).json({ error: 'One or more cart items are invalid.' });
+    }
+    normalized.push({
+      productId: item.productId.trim(),
+      size: item.size.trim(),
+      color: item.color.trim(),
+      quantity: item.quantity,
+    });
+  }
+  if (paymentMethod === 'cod' && normalized.reduce((sum, item) => sum + item.quantity, 0) > 10) {
+    return res.status(400).json({ error: 'Cash on Delivery is limited to 10 items per order.' });
+  }
+
+  const { db } = firebaseAdmin;
+  const orderRef = db.collection('orders').doc();
+  const publicOrderId = 'SNP-' + orderRef.id.slice(-8).toUpperCase();
+  const productRefs = normalized.map((item) => db.collection('products').doc(item.productId));
+  let orderData: any;
+
   try {
-    if (!razorpayClient) {
-      return res.status(503).json({ error: 'Online payments are not configured.' });
-    }
+    await db.runTransaction(async (tx) => {
+      const snapshots = await Promise.all(productRefs.map((ref) => tx.get(ref)));
+      const items: PricedItem[] = snapshots.map((snap, index) => {
+        const requestedItem = normalized[index];
+        if (!snap.exists) throw new Error('A product in your cart is no longer available.');
+        const product = snap.data()!;
+        const price = Number(product.price);
+        const stock = Number(product.stock);
+        if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(stock) || stock < requestedItem.quantity) {
+          throw new Error('Insufficient stock or invalid product price for ' + String(product.name || 'a product') + '.');
+        }
+        const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+        const colors = Array.isArray(product.colors) ? product.colors : [];
+        if (!sizes.includes(requestedItem.size) ||
+            !colors.some((color: any) => color?.name === requestedItem.color)) {
+          throw new Error('The selected size or color is unavailable for ' + String(product.name || 'a product') + '.');
+        }
+        return {
+          productId: snap.id,
+          name: String(product.name || 'SNAPSTER Product'),
+          price,
+          image: typeof product.image === 'string' ? product.image : '',
+          size: requestedItem.size,
+          color: requestedItem.color,
+          quantity: requestedItem.quantity,
+        };
+      });
 
-    const amount = Number(req.body?.amount);
-    const currency = req.body?.currency || 'INR';
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 10000000) {
-      return res.status(400).json({ error: 'A valid order amount is required.' });
-    }
-    if (currency !== 'INR') {
-      return res.status(400).json({ error: 'Only INR payments are supported.' });
-    }
+      const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const shipping = subtotal >= 2499 ? 0 : 99;
+      const total = subtotal + shipping;
+      if (!Number.isSafeInteger(Math.round(total * 100)) || total <= 0) throw new Error('Order total is invalid.');
+      if (paymentMethod === 'cod' && total > 50000) throw new Error('Cash on Delivery is unavailable for orders above ₹50,000.');
 
-    const amountInPaise = Math.round(amount * 100);
-    if (!Number.isSafeInteger(amountInPaise) || amountInPaise <= 0) {
-      return res.status(400).json({ error: 'Invalid payment amount.' });
-    }
+      // All product reads happen before writes, so stock changes are atomic.
+      for (let i = 0; i < productRefs.length; i++) {
+        tx.update(productRefs[i], { stock: Number(snapshots[i].data()!.stock) - normalized[i].quantity, updatedAt: new Date().toISOString() });
+      }
 
-    const receiptId = typeof req.body?.receipt === 'string'
-      ? req.body.receipt.slice(0, 40)
-      : `snapster_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`;
-
-    const order = await razorpayClient.orders.create({
-      amount: amountInPaise,
-      currency: 'INR',
-      receipt: receiptId,
-      notes: { brand: 'SNAPSTER Streetwear' },
+      const userRecord = await firebaseAdmin!.auth.getUser((req as RequestWithRawBody).user!.uid);
+      orderData = {
+        id: publicOrderId,
+        userId: (req as RequestWithRawBody).user!.uid,
+        customerName: req.body.customerName?.trim?.().slice(0, 100) || userRecord.displayName || 'Customer',
+        customerEmail: userRecord.email || '',
+        customerPhone: req.body.shippingAddress.phone,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        items,
+        subtotal,
+        discount: 0,
+        shipping,
+        total,
+        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Razorpay',
+        paymentStatus: paymentMethod === 'cod' ? 'COD Pending' : 'Pending',
+        shippingAddress: {
+          fullName: req.body.shippingAddress.fullName.trim(),
+          phone: req.body.shippingAddress.phone.trim(),
+          street: req.body.shippingAddress.street.trim(),
+          city: req.body.shippingAddress.city.trim(),
+          state: req.body.shippingAddress.state.trim(),
+          pincode: req.body.shippingAddress.pincode,
+        },
+        status: paymentMethod === 'cod' ? 'Confirmed' : 'Processing',
+        awbNumber: '',
+        estimatedDelivery: '',
+      };
+      tx.create(orderRef, orderData);
     });
 
-    return res.json({
-      id: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      receipt: order.receipt,
-      keyId: RAZORPAY_KEY_ID,
-    });
-  } catch (err: any) {
-    console.error('[Razorpay] create-order failed:', err);
-    return res.status(500).json({ error: 'Unable to create payment order.' });
+    if (paymentMethod === 'cod') {
+      return res.status(201).json({ order: orderData });
+    }
+
+    try {
+      const gatewayOrder = await razorpay!.orders.create({
+        amount: Math.round(orderData.total * 100),
+        currency: 'INR',
+        receipt: orderRef.id.slice(0, 40),
+        notes: { snapsterOrderId: orderRef.id, customerUid: (req as RequestWithRawBody).user!.uid },
+      });
+      await orderRef.update({ razorpayOrderId: gatewayOrder.id, updatedAt: new Date().toISOString() });
+      orderData.razorpayOrderId = gatewayOrder.id;
+      return res.status(201).json({
+        order: orderData,
+        razorpay: { id: gatewayOrder.id, amount: gatewayOrder.amount, currency: gatewayOrder.currency, keyId },
+      });
+    } catch (gatewayError) {
+      // Release the reserved stock if Razorpay order creation failed.
+      await db.runTransaction(async (tx) => {
+        const current = await tx.get(orderRef);
+        if (!current.exists || current.data()?.paymentStatus !== 'Pending') return;
+        for (let i = 0; i < productRefs.length; i++) {
+          const productSnap = await tx.get(productRefs[i]);
+          if (productSnap.exists) tx.update(productRefs[i], { stock: Number(productSnap.data()!.stock) + normalized[i].quantity });
+        }
+        tx.delete(orderRef);
+      });
+      throw gatewayError;
+    }
+  } catch (error: any) {
+    console.error('[Orders] create failed:', error);
+    const message = error instanceof Error ? error.message : 'Unable to create order.';
+    return res.status(400).json({ error: message });
   }
 });
 
-app.post('/api/razorpay/verify-payment', (req: Request, res: Response) => {
+app.post('/api/razorpay/verify-payment', requireUser, async (req: Request, res: Response) => {
+  if (!firebaseAdmin || !razorpay || !keySecret) {
+    return res.status(503).json({ verified: false, error: 'Payment verification is not configured.' });
+  }
+  const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+  if (![orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature].every((v) => typeof v === 'string' && v.length > 0)) {
+    return res.status(400).json({ verified: false, error: 'Missing payment verification details.' });
+  }
+
   try {
-    if (!RAZORPAY_KEY_SECRET) {
-      return res.status(503).json({ verified: false, error: 'Payment verification is not configured.' });
+    const orderRef = firebaseAdmin.db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists || orderSnap.data()?.userId !== (req as RequestWithRawBody).user!.uid) {
+      return res.status(404).json({ verified: false, error: 'Order not found.' });
+    }
+    if (orderSnap.data()?.razorpayOrderId !== razorpay_order_id) {
+      return res.status(400).json({ verified: false, error: 'Payment does not belong to this order.' });
     }
 
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
-    if (
-      typeof razorpay_order_id !== 'string' ||
-      typeof razorpay_payment_id !== 'string' ||
-      typeof razorpay_signature !== 'string' ||
-      !razorpay_order_id ||
-      !razorpay_payment_id ||
-      !razorpay_signature
-    ) {
-      return res.status(400).json({ verified: false, error: 'Missing required Razorpay payment details.' });
-    }
-
-    if (processedPayments.has(razorpay_payment_id)) {
-      return res.status(409).json({ verified: false, duplicate: true, error: 'Payment was already processed.' });
-    }
-
-    const payload = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', RAZORPAY_KEY_SECRET)
-      .update(payload)
+    const expectedSignature = crypto.createHmac('sha256', keySecret)
+      .update(razorpay_order_id + '|' + razorpay_payment_id)
       .digest('hex');
-
     if (!safeHexEqual(razorpay_signature, expectedSignature)) {
-      return res.status(400).json({ verified: false, error: 'Invalid Razorpay payment signature.' });
+      return res.status(400).json({ verified: false, error: 'Invalid Razorpay signature.' });
     }
 
-    processedPayments.add(razorpay_payment_id);
-    return res.json({
-      verified: true,
-      paymentId: razorpay_payment_id,
-      orderId: razorpay_order_id,
-      paymentStatus: 'Signature Verified',
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err: any) {
-    console.error('[Razorpay] verify-payment failed:', err);
-    return res.status(500).json({ verified: false, error: 'Payment verification failed.' });
+    const payment: any = await razorpay.payments.fetch(razorpay_payment_id);
+    const result = await markPaymentCaptured(payment);
+    if (result.userId !== (req as RequestWithRawBody).user!.uid) {
+      return res.status(403).json({ verified: false, error: 'Payment owner mismatch.' });
+    }
+    return res.json({ verified: true, order: result, paymentId: payment.id, razorpayOrderId: payment.order_id });
+  } catch (error: any) {
+    console.error('[Razorpay] verification failed:', error);
+    return res.status(400).json({ verified: false, error: error?.message || 'Payment could not be verified.' });
   }
 });
 
-app.post('/api/razorpay/webhook', (req: Request, res: Response) => {
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+app.post('/api/razorpay/webhook', async (req: Request, res: Response) => {
   const signature = req.headers['x-razorpay-signature'];
-
-  if (!webhookSecret || typeof signature !== 'string') {
+  const rawBody = (req as RequestWithRawBody).rawBody;
+  if (!webhookSecret || typeof signature !== 'string' || !rawBody) {
     return res.status(503).send('Webhook verification is not configured.');
   }
-
-  const rawBody = (req as RequestWithRawBody).rawBody;
-  if (!rawBody) {
-    return res.status(400).send('Missing raw webhook body.');
-  }
-
   const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
-  if (!safeHexEqual(signature, expected)) {
-    return res.status(400).send('Invalid webhook signature.');
-  }
+  if (!safeHexEqual(signature, expected)) return res.status(400).send('Invalid webhook signature.');
 
-  const event = req.body?.event;
-  console.log('[Razorpay Webhook Event Received]:', event || 'unknown');
-  // Event persistence/order-state updates must be implemented before relying on
-  // webhooks for fulfillment. Acknowledge only after signature validation.
-  return res.json({ status: 'ok', received: true });
+  try {
+    if (req.body?.event === 'payment.captured') {
+      await markPaymentCaptured(req.body.payload?.payment?.entity);
+    }
+    return res.json({ status: 'ok', received: true });
+  } catch (error) {
+    console.error('[Razorpay Webhook] Processing failed:', error);
+    return res.status(500).send('Webhook processing failed. Razorpay may retry this event.');
+  }
 });
 
 async function startServer() {
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
     app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
-    });
+    app.get('*', (_req: Request, res: Response) => res.sendFile(path.resolve(__dirname, 'dist', 'index.html')));
   }
-
   app.listen(PORT, () => {
     console.log(`[SNAPSTER] Server active on port ${PORT} (mode: ${isProd ? 'production' : 'development'})`);
   });
@@ -195,4 +378,5 @@ async function startServer() {
 
 startServer().catch((err) => {
   console.error('Fatal server boot error:', err);
+  process.exitCode = 1;
 });
