@@ -7,7 +7,8 @@ import dotenv from 'dotenv';
 import Razorpay from 'razorpay';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';\nimport type { DocumentReference } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import type { DocumentReference } from 'firebase-admin/firestore';
 
 dotenv.config();
 
