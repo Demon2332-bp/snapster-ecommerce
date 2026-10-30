@@ -5,6 +5,7 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -194,6 +195,7 @@ export async function signUpWithEmailService(
 ): Promise<AuthUser> {
   const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
   const fbUser = cred.user;
+  await sendEmailVerification(fbUser);
   
   const isAdminEmail = fbUser.emailVerified && ['santhirajugonnabattula@gmail.com', 'admin@snapster.in'].includes((fbUser.email || '').toLowerCase());
   const profile: AuthUser = {
