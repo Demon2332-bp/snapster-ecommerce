@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const isProd = process.env.NODE_ENV === 'production';
-const ADMIN_EMAILS = new Set(['santhirajugonnabattula@gmail.com']);
+const ADMIN_EMAILS = new Set(['santhirajugonnabattula@gmail.com', 'admin@snapster.in']);
 
 type RequestWithRawBody = Request & { rawBody?: Buffer; user?: { uid: string; email?: string; email_verified?: boolean } };
 
