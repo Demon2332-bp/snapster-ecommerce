@@ -388,14 +388,25 @@ async function releaseReservedStock(orderRef: DocumentReference, failureReason: 
     const order = orderSnap.data()!;
     if (order.paymentStatus !== 'Pending') return;
     const items = Array.isArray(order.items) ? order.items : [];
-    const refs = items.map((item: any) => db.collection('products').doc(String(item.productId)));
-    const productSnaps = await Promise.all(refs.map((ref: any) => tx.get(ref)));
+    const quantities = new Map<string, number>();
+    for (const item of items) {
+      const productId = String(item.productId || '');
+      const quantity = Number(item.quantity);
+      if (productId && Number.isSafeInteger(quantity) && quantity > 0) {
+        quantities.set(productId, (quantities.get(productId) || 0) + quantity);
+      }
+    }
+    const productIds = [...quantities.keys()];
+    const refs = productIds.map((productId) => db.collection('products').doc(productId));
+    const productSnaps = await Promise.all(refs.map((ref) => tx.get(ref)));
     for (let i = 0; i < refs.length; i++) {
       if (productSnaps[i].exists) {
-        const quantity = Number(items[i].quantity);
         const stock = Number(productSnaps[i].data()?.stock);
-        if (Number.isSafeInteger(quantity) && quantity > 0 && Number.isSafeInteger(stock)) {
-          tx.update(refs[i], { stock: stock + quantity, updatedAt: new Date().toISOString() });
+        if (Number.isSafeInteger(stock)) {
+          tx.update(refs[i], {
+            stock: stock + (quantities.get(productIds[i]) || 0),
+            updatedAt: new Date().toISOString(),
+          });
         }
       }
     }
