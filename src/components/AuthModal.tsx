@@ -65,7 +65,7 @@ export const AuthModal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'customer' | 'admin'>('customer');
 
   // Customer Login Method: 'phone' | 'email' | 'register'
-  const [customerAuthMode, setCustomerAuthMode] = useState<'phone' | 'email' | 'register'>('phone');
+  const [customerAuthMode, setCustomerAuthMode] = useState<'phone' | 'email' | 'register'>('email');
 
   // Customer Mobile + Name + OTP states
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -170,51 +170,26 @@ export const AuthModal: React.FC = () => {
 
   if (!isAuthModalOpen) return null;
 
-  // Phone OTP Flow
+  // Phone OTP is unavailable until Firebase Phone Auth + reCAPTCHA are configured.
+  // Never generate or display a pretend OTP in the browser.
   const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = phoneNumber.replace(/\D/g, '');
-    if (clean.length < 10) {
-      showToast('Please enter a valid 10-digit mobile number', 'error');
-      return;
-    }
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setGeneratedOtp(code);
-    setOtpStep('otp');
-    setCountdown(30);
-    setEnteredOtp('');
-    showToast(`SNAPSTER SMS: Your OTP is ${code}`, 'info');
+    const message = 'Phone OTP sign-in is not enabled yet. Please use email/password or Google sign-in.';
+    setAuthError(message);
+    showToast(message, 'error');
   };
 
   const handleResendOtp = () => {
-    if (countdown > 0) return;
-    setIsResending(true);
-    setTimeout(() => {
-      const code = Math.floor(1000 + Math.random() * 9000).toString();
-      setGeneratedOtp(code);
-      setCountdown(30);
-      setIsResending(false);
-      showToast(`New OTP sent: ${code}`, 'info');
-    }, 600);
+    const message = 'Phone OTP delivery is not configured. Use email/password or Google sign-in.';
+    setAuthError(message);
+    showToast(message, 'error');
   };
 
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!enteredOtp || enteredOtp.length < 4) {
-      showToast('Please enter the 4-digit OTP', 'error');
-      return;
-    }
-
-    if (enteredOtp !== generatedOtp && enteredOtp !== '1234') {
-      showToast('Incorrect OTP. Try the auto-fill code', 'error');
-      return;
-    }
-
-    loginCustomer(phoneNumber, enteredOtp, customerName);
-    setOtpStep('phone');
-    setPhoneNumber('');
-    setEnteredOtp('');
-    setCustomerName('');
+    const message = 'A browser-generated code cannot verify your phone number. Please use a supported sign-in method.';
+    setAuthError(message);
+    showToast(message, 'error');
   };
 
   // Google Sign-In Flow
@@ -266,19 +241,17 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  // Admin Login Flow
-  const handleAdminSubmit = (e: React.FormEvent) => {
+  // Admin Login Flow: verified Firebase email/password only.
+  const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdminError(null);
-    if (!adminUsername.trim()) {
-      setAdminError('Please enter admin username (use: admin)');
+    if (!adminUsername.trim() || !adminPassword.trim()) {
+      setAdminError('Enter your approved administrator email and Firebase password.');
       return;
     }
-    if (!adminPassword.trim()) {
-      setAdminError('Please enter admin password (use: snapster2026)');
-      return;
-    }
-    const result = loginAdmin(adminUsername, adminPassword);
+    setIsSubmitting(true);
+    const result = await loginAdmin(adminUsername.trim(), adminPassword);
+    setIsSubmitting(false);
     if (result.success) {
       setAdminUsername('');
       setAdminPassword('');
@@ -351,38 +324,15 @@ export const AuthModal: React.FC = () => {
     showToast('Unsaved changes discarded. Reverted to saved profile.', 'info');
   };
 
-  // Profile Mobile Number Update with OTP Verification
+  // Phone-number ownership cannot be claimed through a locally generated OTP.
   const handleSendPhoneOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = newPhoneInput.replace(/\D/g, '');
-    if (clean.length < 10) {
-      showToast('Please enter a valid 10-digit mobile number', 'error');
-      return;
-    }
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setPhoneOtpCode(code);
-    setPhoneOtpStep('verify');
-    setPhoneOtpCountdown(30);
-    setPhoneOtpEntered('');
-    showToast(`SNAPSTER SMS: OTP for updating phone is ${code}`, 'info');
+    showToast('Phone verification is not configured. This number will not be marked as verified.', 'error');
   };
 
   const handleVerifyPhoneOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phoneOtpEntered || phoneOtpEntered.length < 4) {
-      showToast('Please enter the 4-digit verification OTP', 'error');
-      return;
-    }
-
-    if (phoneOtpEntered !== phoneOtpCode && phoneOtpEntered !== '1234') {
-      showToast('Incorrect OTP. Try the auto-fill code', 'error');
-      return;
-    }
-
-    const formatted = `+91 ${newPhoneInput.slice(-10)}`;
-    setVerifiedPhone(formatted);
-    setShowPhoneOtpBox(false);
-    showToast(`Mobile number verified: ${formatted}. Click "Save Changes" to store permanently.`, 'success');
+    showToast('Phone verification is unavailable until Firebase Phone Auth is configured.', 'error');
   };
 
   // Address Add
@@ -1917,13 +1867,13 @@ export const AuthModal: React.FC = () => {
                   </div>
 
                   <p className="text-xs text-[#C7BDB7]">
-                    Login credentials are required to modify the store catalog, change selling prices, manage orders in Firestore, and edit inventory.
+                    Sign in with the verified Firebase email account that has been approved for administrator access.
                   </p>
 
                   <form onSubmit={handleAdminSubmit} className="space-y-4 pt-1">
                     <div>
                       <label className="text-[11px] font-mono text-[#C7BDB7] uppercase block mb-1 font-bold">
-                        Admin Username / ID
+                        Administrator Email
                       </label>
                       <input
                         type="text"
@@ -1932,7 +1882,7 @@ export const AuthModal: React.FC = () => {
                           setAdminUsername(e.target.value);
                           setAdminError(null);
                         }}
-                        placeholder="e.g. admin"
+                        placeholder="admin@example.com"
                         className="w-full bg-white/5 border border-white/15 px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-400"
                         autoFocus
                         required
