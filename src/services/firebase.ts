@@ -403,10 +403,19 @@ export async function updateOrderStatusService(
   orderId: string,
   status: CustomerOrder['status']
 ): Promise<void> {
-  await updateDoc(doc(db, 'orders', orderId), {
-    status,
-    updatedAt: new Date().toISOString(),
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Please sign in again.');
+  const token = await currentUser.getIdToken();
+  const response = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}/status`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
   });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'Order status update was rejected.');
 }
 
 /* ========================================================================= */
