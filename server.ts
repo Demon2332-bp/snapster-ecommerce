@@ -207,7 +207,22 @@ async function markPaymentCaptured(payment: any) {
       return;
     }
     if (order.paymentStatus === 'Paid') {
-      if (order.paymentId !== payment.id) throw new Error('A different payment is already recorded for this order.');
+      if (order.paymentId !== payment.id) {
+        // Multiple successful captures can occur if a customer retries checkout.
+        // Preserve the original paid order, but surface the extra capture for a
+        // manual refund instead of returning a webhook error and retrying forever.
+        tx.update(orderRef, {
+          duplicatePaymentIds: FieldValue.arrayUnion(payment.id),
+          updatedAt: new Date().toISOString(),
+        });
+        tx.create(paymentRef, {
+          orderId: orderRef.id,
+          paymentId: payment.id,
+          status: 'duplicate_capture_refund_required',
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
       tx.create(paymentRef, { orderId: orderRef.id, paymentId: payment.id, createdAt: FieldValue.serverTimestamp() });
       return;
     }
