@@ -24,7 +24,8 @@ export const CheckoutModal: React.FC = () => {
   const [step, setStep] = useState<'details' | 'success'>('details');
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
-  const [paidPaymentId, setPaidPaymentId] = useState<string | null>(null);
+  const [confirmedPaymentStatus, setConfirmedPaymentStatus] = useState<'Paid' | 'COD Pending' | null>(null);
+  const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -133,7 +134,8 @@ export const CheckoutModal: React.FC = () => {
           promoCode: appliedPromo,
         });
         setOrderNumber(created.id);
-        setPaidPaymentId(null);
+        setConfirmedPaymentStatus('COD Pending');
+        setConfirmedTotal(created.total);
         setIsProcessing(false);
         setStep('success');
         clearCart();
@@ -161,7 +163,8 @@ export const CheckoutModal: React.FC = () => {
         pendingOrder.razorpaySignature = signature;
         if (method) pendingOrder.paymentMethod = method;
         setOrderNumber(confirmedOrder.id);
-        setPaidPaymentId(paymentId);
+        setConfirmedPaymentStatus('Paid');
+        setConfirmedTotal(confirmedOrder.total);
         setIsProcessing(false);
         setStep('success');
         clearCart();
@@ -215,13 +218,13 @@ export const CheckoutModal: React.FC = () => {
 
               <div>
                 <span className="text-xs font-mono uppercase text-[#C7BDB7] tracking-widest block">
-                  Payment Authorized · {currency}
+                  {confirmedPaymentStatus === 'Paid' ? 'Payment Confirmed' : 'Cash on Delivery'} · {currency}
                 </span>
                 <h2 className="text-3xl font-black uppercase font-headline text-white mt-1">
                   ORDER {orderNumber}
                 </h2>
                 <p className="text-xs sm:text-sm text-[#C7BDB7] mt-2 max-w-md mx-auto">
-                  Thank you, <strong className="text-white">{formData.fullName}</strong>. A shipment confirmation and tracking link have been dispatched to <strong className="text-white">{formData.email}</strong>.
+                  Thank you, <strong className="text-white">{formData.fullName}</strong>. Your order has been recorded. You can check its latest status from your SNAPSTER account.
                 </p>
               </div>
 
@@ -248,15 +251,15 @@ export const CheckoutModal: React.FC = () => {
                 </div>
                 <div className="flex justify-between border-b border-white/10 pb-2">
                   <span className="text-[#C7BDB7]">Payment Method</span>
-                  <span className="text-white uppercase font-bold">{formData.paymentMethod}</span>
+                  <span className="text-white uppercase font-bold">{confirmedPaymentStatus === 'Paid' ? 'Razorpay · Paid' : 'Cash on Delivery · Pay on delivery'}</span>
                 </div>
                 <div className="flex justify-between border-b border-white/10 pb-2">
                   <span className="text-[#C7BDB7]">Estimated Delivery</span>
                   <span className="text-emerald-400 font-bold">2–4 Business Days</span>
                 </div>
                 <div className="flex justify-between pt-1 text-sm font-bold">
-                  <span className="text-white">Amount Paid</span>
-                  <span className="text-white">{formatPrice(total)}</span>
+                  <span className="text-white">{confirmedPaymentStatus === 'Paid' ? 'Amount Paid' : 'Amount Due on Delivery'}</span>
+                  <span className="text-white">{formatPrice(confirmedTotal ?? total)}</span>
                 </div>
               </div>
 
