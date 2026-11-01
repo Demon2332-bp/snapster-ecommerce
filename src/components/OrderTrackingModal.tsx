@@ -51,40 +51,8 @@ export const OrderTrackingModal: React.FC = () => {
       setTrackingOrderId(matched.id);
       showToast(`Loaded order ${clean}`, 'success');
     } else {
-      // Create simulated order response for unlisted valid ID
-      setActiveOrder({
-        id: clean,
-        createdAt: new Date().toISOString(),
-        items: [
-          {
-            productId: 'demo-1',
-            name: 'Oversized Streetwear Piece',
-            price: 2499,
-            image: '/images/prod_oversized_graphic_tee.jpg',
-            size: 'L',
-            color: 'Pitch Black',
-            quantity: 1,
-          },
-        ],
-        subtotal: 2499,
-        discount: 500,
-        shipping: 0,
-        total: 1999,
-        paymentMethod: 'UPI',
-        paymentStatus: 'Paid',
-        shippingAddress: {
-          fullName: 'Member Guest',
-          phone: '+91 98765 43210',
-          street: 'MG Road, Labbipet',
-          city: 'Vijayawada',
-          state: 'Andhra Pradesh',
-          pincode: '520010',
-        },
-        status: 'Shipped',
-        awbNumber: 'BD-94820194',
-        estimatedDelivery: 'Tomorrow, 5 PM',
-      });
-      showToast(`Retrieved BlueDart tracking for #${clean}`, 'info');
+      setActiveOrder(null);
+      showToast('No matching order was found in your account. Check the order ID and sign in to the correct account.', 'error');
     }
   };
 
@@ -101,36 +69,11 @@ export const OrderTrackingModal: React.FC = () => {
   const currentLevel = activeOrder ? (statusLevels[activeOrder.status] || 3) : 0;
 
   const steps = [
-    {
-      title: 'Order Confirmed',
-      time: 'Verified & Logged',
-      level: 1,
-      desc: 'Payment verified & order dispatched to Vijayawada packaging studio',
-    },
-    {
-      title: 'Processing & Packed',
-      time: 'Inspected & Sealed',
-      level: 2,
-      desc: '6-point fabric inspection passed, sealed in archival protective wrap at Vijayawada AP Hub',
-    },
-    {
-      title: 'Shipped',
-      time: 'BlueDart Express Air',
-      level: 3,
-      desc: 'BlueDart Express shipment dispatched departing Vijayawada Central DC (MG Road, AP)',
-    },
-    {
-      title: 'Out for Delivery',
-      time: 'Doorstep Courier Routing',
-      level: 4,
-      desc: 'Assigned to BlueDart express delivery agent for doorstep drop',
-    },
-    {
-      title: 'Delivered',
-      time: 'Handover Completed',
-      level: 5,
-      desc: 'Doorstep delivery completed with secure contactless OTP verification',
-    },
+    { title: 'Order Confirmed', time: 'Received', level: 1, desc: 'Your order has been recorded by SNAPSTER.' },
+    { title: 'Processing & Packed', time: 'Preparation', level: 2, desc: 'Your order is being prepared for dispatch.' },
+    { title: 'Shipped', time: 'Dispatched', level: 3, desc: 'Your order has been handed to the delivery partner.' },
+    { title: 'Out for Delivery', time: 'Final delivery', level: 4, desc: 'Your order is out for delivery.' },
+    { title: 'Delivered', time: 'Completed', level: 5, desc: 'Your order has been marked as delivered.' },
   ];
 
   const handlePrintInvoice = () => {
@@ -153,7 +96,7 @@ export const OrderTrackingModal: React.FC = () => {
           <div className="flex items-center gap-2">
             <Package size={20} className="text-white" />
             <h3 className="text-base font-black uppercase font-headline tracking-wider text-white">
-              SNAPSTER LIVE ORDER TRACKING
+              SNAPSTER ORDER TRACKING
             </h3>
           </div>
           <button
@@ -205,7 +148,7 @@ export const OrderTrackingModal: React.FC = () => {
                 type="text"
                 value={orderInput}
                 onChange={(e) => setOrderInput(e.target.value)}
-                placeholder="Enter Order ID (e.g. SNP-102948)"
+                placeholder="Enter your order ID"
                 className="w-full bg-[#121112] border border-white/15 pl-9 pr-3 py-2.5 text-xs text-white uppercase font-mono placeholder-[#C7BDB7]/50 focus:outline-none focus:border-white"
               />
             </div>
@@ -228,18 +171,18 @@ export const OrderTrackingModal: React.FC = () => {
                   </div>
                   <div className="text-emerald-400 font-bold flex items-center gap-1.5">
                     <Truck size={14} />
-                    <span>BlueDart AWB #{activeOrder.awbNumber || '94820194'}</span>
+                    <span>{activeOrder.awbNumber ? `AWB #${activeOrder.awbNumber}` : 'Courier details pending dispatch'}</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
                   <div>
-                    <span className="text-[10px] text-[#C7BDB7] uppercase block">Carrier</span>
-                    <span className="text-white font-bold">BlueDart Express AP</span>
+                    <span className="text-[10px] text-[#C7BDB7] uppercase block">Payment</span>
+                    <span className="text-white font-bold">{activeOrder.paymentStatus || 'Status unavailable'}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-[#C7BDB7] uppercase block">Dispatch Hub</span>
-                    <span className="text-white font-bold">Vijayawada Hub (AP)</span>
+                    <span className="text-[10px] text-[#C7BDB7] uppercase block">Courier</span>
+                    <span className="text-white font-bold">{activeOrder.awbNumber ? 'Tracking assigned' : 'Not assigned yet'}</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-[#C7BDB7] uppercase block">Destination</span>
@@ -255,7 +198,7 @@ export const OrderTrackingModal: React.FC = () => {
               {/* Visual Step Timeline */}
               <div className="space-y-4 pt-1">
                 <span className="text-xs font-mono uppercase text-[#C7BDB7] tracking-widest block font-bold">
-                  Shipment Timeline:
+                  Order Progress:
                 </span>
 
                 <div className="space-y-4 relative pl-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] before:bg-white/10">
@@ -322,7 +265,7 @@ export const OrderTrackingModal: React.FC = () => {
                 </div>
 
                 <div className="pt-3 flex justify-between items-center text-xs border-t border-white/5 text-[#C7BDB7]">
-                  <span>Total Paid via {activeOrder.paymentMethod}</span>
+                  <span>{activeOrder.paymentStatus === 'Paid' ? `Paid via ${activeOrder.paymentMethod}` : `Payment: ${activeOrder.paymentStatus || 'Pending'}`}</span>
                   <span className="text-base font-bold text-white">{formatPrice(activeOrder.total)}</span>
                 </div>
               </div>
@@ -332,7 +275,7 @@ export const OrderTrackingModal: React.FC = () => {
               <Package size={36} className="mx-auto text-white/30" />
               <p className="text-sm text-white font-bold uppercase font-mono">No Active Order Selected</p>
               <p className="text-xs text-[#C7BDB7] max-w-sm mx-auto">
-                Enter your 8-digit order number from your confirmation SMS or checkout to track live delivery progress.
+                Your real order details will appear here after you place an order and sign in to the same account.
               </p>
             </div>
           )}
