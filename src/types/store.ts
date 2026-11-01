@@ -131,7 +131,7 @@ export interface OrderItem {
   quantity: number;
 }
 
-export type PaymentStatus = 'Pending' | 'Paid' | 'Failed' | 'Refunded' | 'COD Pending' | 'COD Collected';
+export type PaymentStatus = 'Pending' | 'Paid' | 'Failed' | 'Refunded' | 'Refund Required' | 'COD Pending' | 'COD Collected';
 export type OrderStatus = 'Confirmed' | 'Processing' | 'Packed at Hub' | 'Shipped' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
 
 export interface CustomerOrder {
@@ -150,6 +150,7 @@ export interface CustomerOrder {
   paymentMethod: string;
   paymentStatus: PaymentStatus;
   paymentId?: string;
+  latePaymentId?: string;
   razorpayOrderId?: string;
   razorpaySignature?: string;
   shippingAddress: {
