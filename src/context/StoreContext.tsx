@@ -625,8 +625,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return false;
     } catch (err: any) {
-      showToast(err.message || 'Google sign-in error', 'error');
-      return false;
+      const message = err?.message || 'Google sign-in failed. Please try again.';
+      showToast(message, 'error');
+      throw err; // Let AuthModal display the actual Firebase error.
     }
   };
 
