@@ -258,7 +258,7 @@ export const CheckoutModal: React.FC = () => {
                 </div>
                 <div className="flex justify-between border-b border-white/10 pb-2">
                   <span className="text-[#C7BDB7]">Estimated Delivery</span>
-                  <span className="text-emerald-400 font-bold">2–4 Business Days</span>
+                  <span className="text-emerald-400 font-bold">Shared after dispatch</span>
                 </div>
                 <div className="flex justify-between pt-1 text-sm font-bold">
                   <span className="text-white">{confirmedPaymentStatus === 'Paid' ? 'Amount Paid' : 'Amount Due on Delivery'}</span>
