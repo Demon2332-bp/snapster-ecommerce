@@ -109,6 +109,35 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
+// Small per-process rate limits protect expensive order/payment endpoints from
+// accidental rapid retries and basic abuse. Render is configured as one
+// instance; use a shared store before scaling horizontally.
+app.set('trust proxy', 1);
+function rateLimit(maxRequests: number, windowMs: number) {
+  const attempts = new Map<string, { count: number; resetAt: number }>();
+  return (req: Request, res: Response, next: NextFunction) => {
+    const identity = (req as RequestWithRawBody).user?.uid || req.ip || 'unknown';
+    const now = Date.now();
+    let entry = attempts.get(identity);
+    if (!entry || entry.resetAt <= now) {
+      entry = { count: 0, resetAt: now + windowMs };
+      attempts.set(identity, entry);
+    }
+    entry.count += 1;
+    if (entry.count > maxRequests) {
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((entry.resetAt - now) / 1000))));
+      return res.status(429).json({ error: 'Too many requests. Please wait briefly and try again.' });
+    }
+    if (attempts.size > 5000) {
+      for (const [key, value] of attempts) if (value.resetAt <= now) attempts.delete(key);
+    }
+    return next();
+  };
+}
+const orderRateLimit = rateLimit(8, 60_000);
+const paymentVerifyRateLimit = rateLimit(20, 60_000);
+const adminOrderRateLimit = rateLimit(30, 60_000);
+
 function validText(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
 }
@@ -183,7 +212,7 @@ app.get('/api/razorpay/key', (_req, res) => {
 
 // The server recalculates every price and shipping charge from Firestore.
 // Client-submitted totals, discounts, names, images and stock values are ignored.
-app.post('/api/orders', requireUser, async (req: Request, res: Response) => {
+app.post('/api/orders', requireUser, orderRateLimit, async (req: Request, res: Response) => {
   if (!firebaseAdmin) return res.status(503).json({ error: 'Checkout is unavailable.' });
   if (!validateAddress(req.body?.shippingAddress)) {
     return res.status(400).json({ error: 'Please provide a valid delivery address.' });
@@ -374,7 +403,7 @@ const ALLOWED_ORDER_STATUSES = new Set([
   'Out for Delivery', 'Delivered', 'Cancelled',
 ]);
 
-app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async (req: Request, res: Response) => {
+app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, adminOrderRateLimit, async (req: Request, res: Response) => {
   if (!firebaseAdmin) return res.status(503).json({ error: 'Database unavailable.' });
   const orderId = req.params.orderId;
   const status = req.body?.status;
@@ -456,7 +485,7 @@ app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async 
   }
 });
 
-app.post('/api/razorpay/verify-payment', requireUser, async (req: Request, res: Response) => {
+app.post('/api/razorpay/verify-payment', requireUser, paymentVerifyRateLimit, async (req: Request, res: Response) => {
   if (!firebaseAdmin || !razorpay || !keySecret) {
     return res.status(503).json({ verified: false, error: 'Payment verification is not configured.' });
   }
