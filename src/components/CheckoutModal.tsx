@@ -175,7 +175,9 @@ export const CheckoutModal: React.FC = () => {
       },
       onFailure: (errMsg) => {
         setIsProcessing(false);
-        showToast(`Payment could not be completed: ${errMsg}`, 'error');
+        showToast(errMsg.includes('captured after the order reservation expired')
+          ? errMsg
+          : `Payment could not be completed: ${errMsg}`, 'error');
       },
     });
   };
