@@ -34,11 +34,13 @@ Subscribe to `payment.captured` and `payment.failed`. Use the exact webhook secr
 
 ## Release expired inventory reservations
 
-A pending online order reserves stock. Configure an external scheduler to POST every 5 minutes to:
+A pending online order reserves stock. In production, the Express service automatically calls the protected cleanup endpoint one minute after startup and every 5 minutes afterward, using the server-only `CRON_SECRET`. No separate paid scheduler service is required for the single-instance Render deployment.
+
+The endpoint is also available for an external scheduler or manual operations:
 
 `https://YOUR_DOMAIN/api/maintenance/expire-pending-orders`
 
-Send header `x-cron-secret: YOUR_CRON_SECRET`. Orders awaiting payment for more than 20 minutes are marked failed/cancelled and stock is returned transactionally. Protect this endpoint; never expose the cron secret in browser code.
+Send header `x-cron-secret: YOUR_CRON_SECRET`. Orders awaiting payment for more than 20 minutes are reconciled against Razorpay before stock is returned transactionally. Captured, authorized, unknown, or unverifiable payment states retain their reservation for a later retry. Protect this endpoint; never expose the cron secret in browser code.
 
 ## Firestore deployment
 
