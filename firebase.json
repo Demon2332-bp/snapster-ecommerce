@@ -1,0 +1,7 @@
+{
+  "firestore": {
+    "database": "ai-studio-snapsterpremiums-0f0a31f1-c628-41c1-894b-f705f1af7340",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}
