@@ -54,6 +54,10 @@ firebase deploy --only firestore --project proverbial-dream-gc70r
 
 The composite `orders(paymentStatus, createdAt)` index is required by the pending-payment expiry worker. Firestore may take several minutes to finish building it after deployment. Orders and paymentEvents are server-write-only after the rules deploy. Order status updates use the authenticated administrator API; direct browser order writes remain blocked.
 
+## Refund and late-payment handling
+
+The current implementation does not initiate Razorpay refunds automatically. Admin cancellation of an already-paid online order is blocked until a refund is processed manually in the Razorpay Dashboard. If a payment capture arrives after its stock reservation has expired, the order remains cancelled and its payment status is set to `Refund Required`; an administrator must reconcile and refund that captured payment in Razorpay. Do not mark such an order as delivered or create a replacement shipment until the refund/order decision is resolved.
+
 ## Product data requirements
 
 - Each product document must have numeric `price`, non-negative integer `stock`, a `sizes` array and a `colors` array whose entries have a `name`.
