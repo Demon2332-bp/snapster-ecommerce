@@ -132,7 +132,14 @@ function rateLimit(maxRequests: number, windowMs: number) {
       return res.status(429).json({ error: 'Too many requests. Please wait briefly and try again.' });
     }
     if (attempts.size > 5000) {
-      for (const [key, value] of attempts) if (value.resetAt <= now) attempts.delete(key);
+      for (const [key, value] of attempts) {
+        if (value.resetAt <= now) attempts.delete(key);
+      }
+      while (attempts.size > 5000) {
+        const oldest = attempts.keys().next();
+        if (oldest.done) break;
+        attempts.delete(oldest.value);
+      }
     }
     return next();
   };
