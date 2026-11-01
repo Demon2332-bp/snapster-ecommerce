@@ -645,6 +645,39 @@ async function startServer() {
   }
   app.listen(PORT, () => {
     console.log(`[SNAPSTER] Server active on port ${PORT} (mode: ${isProd ? 'production' : 'development'})`);
+
+    // Run reservation cleanup inside the web service so abandoned Razorpay
+    // checkouts do not permanently hold inventory. This uses the generated
+    // server-only CRON_SECRET and creates no separate scheduler service.
+    if (isProd && process.env.CRON_SECRET) {
+      let expiryInFlight = false;
+      const runExpiry = async () => {
+        if (expiryInFlight) return;
+        expiryInFlight = true;
+        try {
+          const response = await fetch(`http://127.0.0.1:${PORT}/api/maintenance/expire-pending-orders`, {
+            method: 'POST',
+            headers: { 'x-cron-secret': process.env.CRON_SECRET! },
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            console.error('[Order Expiry Scheduler] Cleanup request failed:', response.status, result);
+          } else {
+            console.info('[Order Expiry Scheduler] Cleanup completed:', result);
+          }
+        } catch (error) {
+          console.error('[Order Expiry Scheduler] Cleanup request failed:', error);
+        } finally {
+          expiryInFlight = false;
+        }
+      };
+      const startupTimer = setTimeout(() => { void runExpiry(); }, 60_000);
+      startupTimer.unref();
+      const intervalTimer = setInterval(() => { void runExpiry(); }, 5 * 60_000);
+      intervalTimer.unref();
+    } else if (isProd) {
+      console.warn('[Order Expiry Scheduler] CRON_SECRET is missing; pending stock reservations require manual cleanup.');
+    }
   });
 }
 
