@@ -139,8 +139,14 @@ export async function signInWithGoogleService(): Promise<AuthUser | null> {
     }
     return profile;
   } catch (err: any) {
-    console.error('Google Sign-In failed:', err);
-    throw new Error(err.message || 'Google sign-in could not be completed.');
+    console.error('Google Sign-In failed:', {
+      code: err?.code || 'unknown',
+      message: err?.message || String(err),
+      authDomain: firebaseConfig.authDomain,
+      projectId: firebaseConfig.projectId,
+    });
+    // Preserve Firebase's error code so the UI can show the real cause.
+    throw err;
   }
 }
 
