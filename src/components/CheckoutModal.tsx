@@ -19,6 +19,7 @@ export const CheckoutModal: React.FC = () => {
     currency,
     getExpectedDeliveryDate,
     user,
+    refreshOrders,
   } = useStore();
 
   const [step, setStep] = useState<'details' | 'success'>('details');
@@ -133,6 +134,7 @@ export const CheckoutModal: React.FC = () => {
           customerName: formData.fullName,
           promoCode: appliedPromo,
         });
+        await refreshOrders();
         setOrderNumber(created.id);
         setConfirmedPaymentStatus('COD Pending');
         setConfirmedTotal(created.total);
@@ -157,6 +159,7 @@ export const CheckoutModal: React.FC = () => {
       customerPhone: formData.phone,
       promoCode: appliedPromo,
       onSuccess: ({ paymentId, orderId, signature, method, order: confirmedOrder }) => {
+        void refreshOrders();
         pendingOrder.paymentStatus = 'Paid';
         pendingOrder.paymentId = paymentId;
         pendingOrder.razorpayOrderId = orderId;
