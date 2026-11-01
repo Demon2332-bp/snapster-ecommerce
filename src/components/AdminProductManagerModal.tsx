@@ -463,6 +463,12 @@ export const AdminProductManagerModal: React.FC = () => {
                             {ord.paymentStatus || 'Unknown'}
                           </span>
                         </div>
+                        {(ord.latePaymentId || ord.paymentId) && (
+                          <div className="flex items-center justify-between gap-3 text-[10px] pt-1">
+                            <span className="text-[#C7BDB7]">Razorpay payment reference:</span>
+                            <span className="text-white font-mono break-all text-right">{ord.latePaymentId || ord.paymentId}</span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between text-xs pt-1 border-t border-white/10">
                           <span className="text-white font-bold">Grand Total:</span>
                           <span className="text-amber-400 font-bold text-sm">₹{ord.total.toLocaleString('en-IN')}</span>
