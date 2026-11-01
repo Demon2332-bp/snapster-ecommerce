@@ -889,7 +889,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ? Math.round(cartSubtotal * 0.1)
     : 0;
 
-  const shippingFee = cartSubtotal === 0 || cartSubtotal >= freeShippingThreshold || appliedPromo === 'FREESHIP' ? 0 : 149;
+  // Match the server's free-shipping threshold: apply discounts before checking ₹2,499.
+  const shippingFee = cartSubtotal === 0 || cartSubtotal - discountAmount >= freeShippingThreshold || appliedPromo === 'FREESHIP' ? 0 : 149;
 
   const applyPromoCode = (code: string) => {
     const clean = code.trim().toUpperCase();
