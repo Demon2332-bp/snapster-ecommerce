@@ -141,6 +141,9 @@ async function markPaymentCaptured(payment: any) {
       return;
     }
     const order = orderSnap.data()!;
+    if (order.status === 'Cancelled') {
+      throw new Error('Cancelled orders cannot accept a captured payment.');
+    }
     const expectedAmount = Math.round(Number(order.total) * 100);
     if (payment.status !== 'captured' || payment.currency !== 'INR' ||
         Number(payment.amount) !== expectedAmount || payment.order_id !== order.razorpayOrderId) {
@@ -395,6 +398,13 @@ app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async 
           order.paymentStatus === 'Paid') {
         throw new Error('PAID_ONLINE_REFUND_REQUIRED');
       }
+      if (status === 'Cancelled' && order.paymentMethod !== 'Cash on Delivery' &&
+          order.paymentStatus === 'Pending') {
+        // Do not let an admin cancel an in-flight gateway order while Razorpay
+        // may still capture a retry. The expiry worker checks gateway state
+        // before releasing stock and changing the order to Failed/Cancelled.
+        throw new Error('ONLINE_PAYMENT_PENDING_EXPIRY_REQUIRED');
+      }
 
       // A cancelled COD order has no payment to refund, so release its stock
       // in the same transaction as the status change. Paid online orders need
@@ -441,6 +451,7 @@ app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async 
     if (message === 'ORDER_FINAL_STATE') return res.status(409).json({ error: 'This order is already in a final state.' });
     if (message === 'UNPAID_ORDER') return res.status(409).json({ error: 'An unpaid online order cannot be marked delivered.' });
     if (message === 'PAID_ONLINE_REFUND_REQUIRED') return res.status(409).json({ error: 'A paid online order cannot be cancelled until its refund has been processed.' });
+    if (message === 'ONLINE_PAYMENT_PENDING_EXPIRY_REQUIRED') return res.status(409).json({ error: 'This online payment is still pending. Wait for payment reconciliation and automatic stock release before cancelling it.' });
     return res.status(500).json({ error: 'Could not update order status.' });
   }
 });
