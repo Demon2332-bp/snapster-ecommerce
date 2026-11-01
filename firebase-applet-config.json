@@ -1,12 +1,10 @@
 {
-  "projectId": "proverbial-dream-gc70r",
-  "appId": "1:558408584729:web:50f51cb89fb8c163b16488",
-  "apiKey": "AIzaSyAJFiHVEC6aHcjHJFvbOXZiVHqILLUwPTc",
-  "authDomain": "proverbial-dream-gc70r.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-snapsterpremiums-0f0a31f1-c628-41c1-894b-f705f1af7340",
-  "storageBucket": "proverbial-dream-gc70r.firebasestorage.app",
-  "messagingSenderId": "558408584729",
-  "measurementId": "",
-  "oAuthClientId": "558408584729-saovfl87ni79b3l9340q4qn34720lisi.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "snapster-production",
+  "appId": "1:4231444658:web:c2b7e6a41a6bfe98dcf1ab",
+  "apiKey": "AIzaSyDyBUhWbh1KHIC35IV4-ipPGMhAPIPoMY8",
+  "authDomain": "snapster-production.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "snapster-production.firebasestorage.app",
+  "messagingSenderId": "4231444658",
+  "measurementId": "G-KN6DC0FXQW"
 }
