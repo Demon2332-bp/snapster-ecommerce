@@ -391,6 +391,10 @@ app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async 
           order.paymentStatus !== 'Paid') {
         throw new Error('UNPAID_ORDER');
       }
+      if (status === 'Cancelled' && order.paymentMethod !== 'Cash on Delivery' &&
+          order.paymentStatus === 'Paid') {
+        throw new Error('PAID_ONLINE_REFUND_REQUIRED');
+      }
 
       // A cancelled COD order has no payment to refund, so release its stock
       // in the same transaction as the status change. Paid online orders need
@@ -419,7 +423,15 @@ app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async 
           }
         }
       }
-      tx.update(ref, { status, updatedAt: new Date().toISOString() });
+      const orderUpdate: Record<string, unknown> = {
+        status,
+        updatedAt: new Date().toISOString(),
+      };
+      if (status === 'Delivered' && order.paymentMethod === 'Cash on Delivery') {
+        orderUpdate.paymentStatus = 'COD Collected';
+        orderUpdate.paymentCollectedAt = new Date().toISOString();
+      }
+      tx.update(ref, orderUpdate);
     });
     return res.json({ success: true, orderId, status });
   } catch (error) {
@@ -428,6 +440,7 @@ app.patch('/api/admin/orders/:orderId/status', requireUser, requireAdmin, async 
     if (message === 'ORDER_NOT_FOUND') return res.status(404).json({ error: 'Order not found.' });
     if (message === 'ORDER_FINAL_STATE') return res.status(409).json({ error: 'This order is already in a final state.' });
     if (message === 'UNPAID_ORDER') return res.status(409).json({ error: 'An unpaid online order cannot be marked delivered.' });
+    if (message === 'PAID_ONLINE_REFUND_REQUIRED') return res.status(409).json({ error: 'A paid online order cannot be cancelled until its refund has been processed.' });
     return res.status(500).json({ error: 'Could not update order status.' });
   }
 });
