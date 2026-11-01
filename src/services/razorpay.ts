@@ -100,8 +100,11 @@ export async function openRazorpayCheckout({
             razorpay_payment_id: response.razorpay_payment_id,
             razorpay_signature: response.razorpay_signature,
           });
+          if (verified.order?.paymentStatus === 'Refund Required') {
+            throw new Error('Your payment was captured after the order reservation expired. The order was not reopened; contact SNAPSTER support to arrange a refund.');
+          }
           if (verified.verified !== true || !verified.order || verified.order.paymentStatus !== 'Paid') {
-            throw new Error('The server has not confirmed this payment as captured.');
+            throw new Error('The server has not confirmed this payment as captured. Check your order status before trying again.');
           }
           onSuccess({
             paymentId: response.razorpay_payment_id,
