@@ -25,6 +25,9 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 });
 const PORT = Number(process.env.PORT || 3000);
@@ -198,10 +201,11 @@ async function markPaymentCaptured(payment: any) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    checkoutConfigured: Boolean(firebaseAdmin),
-    onlinePaymentsConfigured: Boolean(firebaseAdmin && razorpay),
+  const checkoutConfigured = Boolean(firebaseAdmin);
+  res.status(checkoutConfigured ? 200 : 503).json({
+    status: checkoutConfigured ? 'ok' : 'degraded',
+    checkoutConfigured,
+    onlinePaymentsConfigured: Boolean(firebaseAdmin && razorpay && keySecret),
   });
 });
 
