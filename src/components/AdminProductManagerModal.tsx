@@ -404,7 +404,9 @@ export const AdminProductManagerModal: React.FC = () => {
                           </span>
                         </div>
                         <p className="text-xs font-mono text-amber-200/80 mt-1">
-                          BlueDart AWB: <strong className="text-white">{ord.awbNumber}</strong> • ETA: {ord.estimatedDelivery}
+                          {ord.awbNumber || ord.estimatedDelivery
+                            ? <>Tracking: <strong className="text-white">{ord.awbNumber || 'Awaiting AWB'}</strong> • ETA: {ord.estimatedDelivery || 'Pending'}</>
+                            : 'Tracking details will be added after the order is dispatched.'}
                         </p>
                       </div>
 
@@ -454,6 +456,12 @@ export const AdminProductManagerModal: React.FC = () => {
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-[#C7BDB7]">Shipping:</span>
                           <span className="text-white">{ord.shipping === 0 ? 'FREE' : `₹${ord.shipping}`}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs pt-1 border-t border-white/10">
+                          <span className="text-[#C7BDB7]">Payment status:</span>
+                          <span className={`font-bold ${ord.paymentStatus === 'Paid' || ord.paymentStatus === 'COD Collected' ? 'text-emerald-400' : 'text-amber-300'}`}>
+                            {ord.paymentStatus || 'Unknown'}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between text-xs pt-1 border-t border-white/10">
                           <span className="text-white font-bold">Grand Total:</span>
