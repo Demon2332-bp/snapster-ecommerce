@@ -140,7 +140,9 @@ export const ExpressBuyNowModal: React.FC = () => {
       },
       onFailure: (message) => {
         setIsProcessing(false);
-        showToast(`Payment could not be completed: ${message}`, 'error');
+        showToast(message.includes('captured after the order reservation expired')
+          ? message
+          : `Payment could not be completed: ${message}`, 'error');
       },
     });
   };
