@@ -435,7 +435,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (user?.id) {
       addNotificationService(user.id, {
         title: `Order Placed (#${order.id})`,
-        message: `Order for ₹${order.total.toLocaleString('en-IN')} confirmed. Dispatched via BlueDart Air from Vijayawada AP Hub.`,
+        message: `Your order for ₹${order.total.toLocaleString('en-IN')} has been recorded. Check your SNAPSTER account for the latest status.`,
         type: 'order',
         read: false,
       }).catch(console.warn);
