@@ -2,6 +2,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     --color-oxblood: #4A0718;
     --color-burgundy: #650D24;
     --color-winered: #78132D;
@@ -9,49 +10,95 @@
     --color-charcoal: #1D1B1C;
     --color-warmivory: #F6F1E9;
     --color-muted: #C7BDB7;
+    --page-gutter: clamp(1rem, 4vw, 3.5rem);
+  }
+
+  * { box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 6rem;
+    background: #111011;
   }
 
   body {
-    background-color: #111011;
+    margin: 0;
+    min-width: 320px;
+    background:
+      radial-gradient(ellipse at 50% -22rem, rgba(120, 19, 45, .20), transparent 48rem),
+      #111011;
     color: #F6F1E9;
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+
+  button, input, textarea, select { font: inherit; }
+  button, a { -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, a:focus-visible, input:focus-visible,
+  textarea:focus-visible, select:focus-visible {
+    outline: 2px solid #E7B66A;
+    outline-offset: 3px;
+  }
+
+  img { display: block; max-width: 100%; }
+  ::selection { background: #78132D; color: #fff; }
 }
 
 .font-headline {
   font-family: 'Bebas Neue', 'Anton', sans-serif;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.045em;
 }
 
-.font-brand {
-  font-family: 'Syne', sans-serif;
+.font-brand { font-family: 'Syne', sans-serif; }
+
+/* Consistent premium motion and tactile feedback */
+@keyframes snapster-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: snapster-rise .35s ease both; }
+
+button, a {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-duration: 180ms;
+  transition-timing-function: ease-out;
 }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+button:active { transform: scale(.985); }
+button:disabled { cursor: not-allowed; opacity: .48; transform: none; }
+
+/* Cleaner, quieter scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #650D24 #111011;
+}
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: #111011; }
+::-webkit-scrollbar-thumb { background: #4A0718; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #78132D; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Shared surface language for product and content panels */
+.surface-premium {
+  background: linear-gradient(145deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 18px 50px rgba(0,0,0,.18);
+}
+.text-balance { text-wrap: balance; }
+
+@media (max-width: 640px) {
+  html { scroll-padding-top: 5rem; }
+  body { font-size: 14px; }
 }
 
-::-webkit-scrollbar-track {
-  background: #111011;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #4A0718;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #78132D;
-}
-
-/* Hide scrollbar utility */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }
