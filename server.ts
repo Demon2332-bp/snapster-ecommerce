@@ -180,13 +180,31 @@ async function markPaymentCaptured(payment: any) {
       return;
     }
     const order = orderSnap.data()!;
-    if (order.status === 'Cancelled') {
-      throw new Error('Cancelled orders cannot accept a captured payment.');
-    }
     const expectedAmount = Math.round(Number(order.total) * 100);
     if (payment.status !== 'captured' || payment.currency !== 'INR' ||
         Number(payment.amount) !== expectedAmount || payment.order_id !== order.razorpayOrderId) {
       throw new Error('Captured payment amount, currency, or order does not match.');
+    }
+    // A gateway capture can arrive after the reservation expiry worker has
+    // safely released stock. Never resurrect the cancelled order or oversell;
+    // record a refund-required exception so the admin can reconcile it.
+    if (order.status === 'Cancelled') {
+      if (order.paymentStatus !== 'Failed') {
+        throw new Error('Cancelled order received an unexpected captured payment.');
+      }
+      tx.update(orderRef, {
+        paymentStatus: 'Refund Required',
+        latePaymentId: payment.id,
+        latePaymentCapturedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      tx.create(paymentRef, {
+        orderId: orderRef.id,
+        paymentId: payment.id,
+        status: 'late_capture_refund_required',
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return;
     }
     if (order.paymentStatus === 'Paid') {
       if (order.paymentId !== payment.id) throw new Error('A different payment is already recorded for this order.');
