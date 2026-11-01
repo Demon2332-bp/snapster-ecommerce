@@ -76,7 +76,7 @@ export const Header: React.FC = () => {
   return (
     <>
       {/* Top Promotional Announcement Banner */}
-      <div className="bg-[#300510] text-[#F6F1E9] text-[10px] sm:text-[11px] font-mono py-1.5 px-4 border-b border-white/10 flex items-center justify-between">
+      <div className="relative z-50 bg-[#21040D] text-[#F6F1E9] text-[10px] sm:text-[11px] font-mono py-2 px-4 border-b border-white/[0.08]">
         <div className="max-w-[1440px] mx-auto w-full flex items-center justify-between">
           <div className="hidden sm:flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -150,8 +150,8 @@ export const Header: React.FC = () => {
       <header
         className={`sticky top-0 z-40 w-full transition-all duration-300 ${
           isScrolled
-            ? 'bg-[#4A0718]/95 backdrop-blur-md shadow-xl py-3 border-b border-[#650D24]/40'
-            : 'bg-[#4A0718] py-4 md:py-5 border-b border-white/5'
+            ? 'bg-[#24050E]/95 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,.28)] py-2.5 border-b border-white/10'
+            : 'bg-[#300611] py-3.5 md:py-4.5 border-b border-white/[0.08]'
         }`}
       >
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
@@ -202,7 +202,7 @@ export const Header: React.FC = () => {
           </div>
 
           {/* Center Navigation Links (Desktop) */}
-          <nav className="hidden md:flex items-center gap-7 lg:gap-9 text-xs lg:text-[13px] font-semibold tracking-wider uppercase text-[#F6F1E9]/80">
+          <nav className="hidden md:flex items-center gap-5 lg:gap-7 text-[11px] lg:text-xs font-semibold tracking-[.13em] uppercase text-[#F6F1E9]/75">
             {navLinks.map((link) => {
               const isActive = currentView === link.view;
               return (
