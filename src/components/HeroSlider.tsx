@@ -67,7 +67,7 @@ export const HeroSlider: React.FC = () => {
 
   return (
     <section
-      className="relative w-full bg-[#111011] text-[#F6F1E9] overflow-hidden select-none focus:outline-none min-h-[580px] sm:min-h-[660px] lg:min-h-[720px] flex items-stretch border-b border-white/5"
+      className="relative w-full bg-[#111011] text-[#F6F1E9] overflow-hidden select-none focus:outline-none min-h-[540px] sm:min-h-[620px] lg:min-h-[690px] flex items-stretch border-b border-white/5"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onKeyDown={handleKeyDown}
@@ -110,7 +110,7 @@ export const HeroSlider: React.FC = () => {
               />
 
               {/* Sophisticated Dark Burgundy & Charcoal Architectural Gradient Overlays */}
-              <div className="absolute inset-0 bg-gradient-to-r from-[#111011]/95 via-[#111011]/70 to-transparent lg:w-[68%]" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#111011]/95 via-[#111011]/75 to-[#111011]/10 lg:w-[72%]" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#111011] via-transparent to-[#111011]/50" />
               <div className="absolute inset-0 bg-[#4A0718]/15 mix-blend-multiply" />
             </div>
@@ -118,7 +118,7 @@ export const HeroSlider: React.FC = () => {
         })}
 
         {/* Hero Content Overlay */}
-        <div className="relative z-20 max-w-[1440px] w-full mx-auto px-6 sm:px-10 lg:px-14 pt-12 md:pt-16 pb-20 flex-1 flex flex-col justify-center">
+        <div className="relative z-20 max-w-[1440px] w-full mx-auto px-5 sm:px-10 lg:px-14 pt-10 md:pt-14 pb-16 flex-1 flex flex-col justify-center">
           <div className="max-w-2xl">
             {/* Slide-specific Logo Mark & Subtitle Tag */}
             <div className="mb-4 sm:mb-6 flex items-center gap-3 animate-fade-in">
@@ -126,7 +126,7 @@ export const HeroSlider: React.FC = () => {
             </div>
 
             {/* Huge Bold Condensed Campaign Headline */}
-            <h1 className="text-6xl sm:text-7xl md:text-8xl xl:text-9xl font-black uppercase leading-[0.88] tracking-tight font-headline text-white drop-shadow-sm">
+            <h1 className="text-[clamp(3.25rem,9vw,8.5rem)] sm:text-7xl md:text-8xl xl:text-9xl font-black uppercase leading-[0.88] tracking-tight font-headline text-white drop-shadow-sm">
               {activeData.headline.split('\n').map((line, i) => (
                 <span key={i} className="block">
                   {line}
@@ -135,12 +135,12 @@ export const HeroSlider: React.FC = () => {
             </h1>
 
             {/* Supporting Brand Statement */}
-            <p className="mt-5 sm:mt-6 text-sm sm:text-base md:text-lg font-bold tracking-widest text-[#F6F1E9] uppercase font-sans">
+            <p className="mt-4 sm:mt-6 text-xs sm:text-base md:text-lg font-bold tracking-widest text-[#F6F1E9] uppercase font-sans">
               {activeData.statement}
             </p>
 
             {/* Action CTA Buttons */}
-            <div className="mt-7 sm:mt-9 flex flex-wrap items-center gap-4">
+            <div className="mt-6 sm:mt-9 flex flex-wrap items-center gap-3 sm:gap-4">
               <button
                 onClick={handleCtaClick}
                 className="group inline-flex items-center gap-3 px-7 sm:px-8 py-3.5 sm:py-4 bg-white text-[#111011] hover:bg-[#F6F1E9] font-extrabold text-xs sm:text-sm uppercase tracking-widest transition-all duration-200 transform hover:translate-x-1 shadow-2xl cursor-pointer"
