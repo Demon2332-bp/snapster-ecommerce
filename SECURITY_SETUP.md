@@ -44,7 +44,15 @@ Send header `x-cron-secret: YOUR_CRON_SECRET`. Orders awaiting payment for more 
 
 ## Firestore deployment
 
-Deploy the updated `firestore.rules` to the same named Firestore database used by this application. Orders and paymentEvents are server-write-only after deployment. Order status updates use the authenticated administrator API; direct browser order writes remain blocked.
+This branch includes `firebase.json`, `firestore.rules`, and `firestore.indexes.json` for the named Firestore database used by SNAPSTER. From a trusted terminal with Firebase CLI installed and the correct project selected, run:
+
+```bash
+firebase login
+firebase use proverbial-dream-gc70r
+firebase deploy --only firestore --project proverbial-dream-gc70r
+```
+
+The composite `orders(paymentStatus, createdAt)` index is required by the pending-payment expiry worker. Firestore may take several minutes to finish building it after deployment. Orders and paymentEvents are server-write-only after the rules deploy. Order status updates use the authenticated administrator API; direct browser order writes remain blocked.
 
 ## Product data requirements
 
