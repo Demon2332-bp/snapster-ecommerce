@@ -446,7 +446,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       await updateOrderStatusFirebase(orderId, status);
       setOrders((prev) =>
-        prev.map((ord) => (ord.id === orderId ? { ...ord, status, updatedAt: new Date().toISOString() } : ord))
+        prev.map((ord) => (ord.id === orderId ? {
+          ...ord,
+          status,
+          ...(status === 'Delivered' && ord.paymentMethod === 'Cash on Delivery'
+            ? { paymentStatus: 'COD Collected' }
+            : {}),
+          updatedAt: new Date().toISOString(),
+        } : ord))
       );
       showToast(`Order #${orderId} marked as "${status}"`, 'success');
     } catch (error: any) {
