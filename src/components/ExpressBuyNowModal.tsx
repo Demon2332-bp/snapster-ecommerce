@@ -18,6 +18,7 @@ export const ExpressBuyNowModal: React.FC = () => {
     formatPrice,
     showToast,
     user,
+    refreshOrders,
   } = useStore();
 
   const [quantity, setQuantity] = useState(1);
@@ -106,6 +107,7 @@ export const ExpressBuyNowModal: React.FC = () => {
           shippingAddress,
           paymentMethod: 'cod',
         });
+        await refreshOrders();
         setOrderConfirmed({
           orderId: created.id,
           total: Number(created.total),
@@ -127,6 +129,7 @@ export const ExpressBuyNowModal: React.FC = () => {
       customerEmail: user.email,
       customerPhone: address.phone.trim(),
       onSuccess: ({ paymentId, order: confirmedOrder }) => {
+        void refreshOrders();
         setIsProcessing(false);
         setOrderConfirmed({
           orderId: confirmedOrder.id,
